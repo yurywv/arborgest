@@ -1,13 +1,18 @@
-// Armazenamento de arquivos com dois drivers:
+// Armazenamento de arquivos com três drivers:
 //  - "local": disco (desenvolvimento / Railway com volume persistente)
 //  - "s3": qualquer serviço compatível com S3 (AWS S3, Cloudflare R2, Supabase Storage, MinIO)
+//  - "vercel-blob": Vercel Blob (store privado); escolhido automaticamente quando existe BLOB_READ_WRITE_TOKEN
 // Os arquivos são sempre privados; o acesso passa por /api/files/[...key], que exige login.
 import fs from "node:fs/promises";
 import path from "node:path";
 import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import * as blob from "@vercel/blob";
 
-const driver = () => (process.env.STORAGE_DRIVER ?? "local") as "local" | "s3";
+type Driver = "local" | "s3" | "vercel-blob";
+const driver = (): Driver =>
+  (process.env.STORAGE_DRIVER || (process.env.BLOB_READ_WRITE_TOKEN ? "vercel-blob" : "local")) as Driver;
+const blobAccess = () => (process.env.BLOB_ACCESS === "public" ? "public" : "private") as "public" | "private";
 const KEY_RE = /^[a-z0-9][a-z0-9/_.-]{2,200}$/i;
 
 export function assertSafeKey(key: string) {
@@ -45,6 +50,10 @@ const bucket = () => {
 
 export async function putObject(key: string, body: Buffer, contentType: string) {
   assertSafeKey(key);
+  if (driver() === "vercel-blob") {
+    await blob.put(key, body, { access: blobAccess(), contentType, addRandomSuffix: false, allowOverwrite: true });
+    return;
+  }
   if (driver() === "s3") {
     await s3Client().send(new PutObjectCommand({ Bucket: bucket(), Key: key, Body: body, ContentType: contentType }));
     return;
@@ -58,6 +67,11 @@ export async function putObject(key: string, body: Buffer, contentType: string) 
 export async function getObject(key: string): Promise<Buffer | null> {
   assertSafeKey(key);
   try {
+    if (driver() === "vercel-blob") {
+      const r = await blob.get(key, { access: blobAccess() });
+      if (!r || r.statusCode !== 200) return null;
+      return Buffer.from(await new Response(r.stream).arrayBuffer());
+    }
     if (driver() === "s3") {
       const r = await s3Client().send(new GetObjectCommand({ Bucket: bucket(), Key: key }));
       const bytes = await r.Body?.transformToByteArray();
@@ -86,7 +100,8 @@ export async function signedUrl(key: string, fileName?: string): Promise<string 
 export async function deleteObject(key: string) {
   assertSafeKey(key);
   try {
-    if (driver() === "s3") await s3Client().send(new DeleteObjectCommand({ Bucket: bucket(), Key: key }));
+    if (driver() === "vercel-blob") await blob.del(key);
+    else if (driver() === "s3") await s3Client().send(new DeleteObjectCommand({ Bucket: bucket(), Key: key }));
     else await fs.unlink(localPath(key));
   } catch (e) {
     console.warn("[storage] falha ao remover", key, e);

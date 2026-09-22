@@ -11,6 +11,7 @@ import { clientIp, createSession, destroySession, getCurrentUser } from "@/lib/a
 import { hashPassword, passwordSchema, verifyPassword } from "@/lib/password";
 import { isLimited, rateLimit, resetLimit } from "@/lib/rate-limit";
 import { sendMail } from "@/lib/mail";
+import { appBaseUrl } from "@/lib/qr";
 import type { ActionState } from "@/lib/action-state";
 
 const safeNext = (n: unknown) => (typeof n === "string" && n.startsWith("/") && !n.startsWith("//") ? n : "/dashboard");
@@ -63,7 +64,7 @@ export async function requestPasswordReset(_: ActionState, fd: FormData): Promis
       await db.passwordResetToken.create({
         data: { userId: user.id, tokenHash: sha256(token), expiresAt: new Date(Date.now() + 60 * 60_000) },
       });
-      const link = `${process.env.APP_URL ?? "http://localhost:3000"}/redefinir-senha?token=${token}`;
+      const link = `${await appBaseUrl()}/redefinir-senha?token=${token}`;
       await sendMail(
         user.email,
         "Redefinição de senha — ArborGest",

@@ -27,7 +27,7 @@ CRM verticalizado para arboricultura: clientes, propriedades, **exemplares arbó
 | Banco | **PostgreSQL + Prisma 6** | Modelo relacional normalizado, migrations versionadas, tipos gerados. |
 | Autenticação | **Sessão própria com JWT assinado (jose) em cookie httpOnly + bcrypt** | Ver [decisões](#13-decisões-técnicas-e-limitações-conhecidas). Equivalente ao Auth.js Credentials, com recuperação de senha, invalidação de sessão e RBAC sob controle total. |
 | Mapas | **Leaflet + OpenStreetMap** (react-leaflet) | Gratuito, sem chave de API. Coordenadas WGS84 / EPSG:4326. |
-| Arquivos | Driver **local** ou **S3 compatível** (AWS S3, Cloudflare R2, Supabase Storage, MinIO) | Fotos são normalizadas no servidor com `sharp` (rotação EXIF, redimensionamento, remoção de metadados). |
+| Arquivos | Driver **local**, **Vercel Blob** (privado) ou **S3 compatível** (AWS S3, Cloudflare R2, Supabase Storage, MinIO) | Fotos são normalizadas no servidor com `sharp` (rotação EXIF, redimensionamento, remoção de metadados). |
 | QR Code | `qrcode` (servidor) + `html5-qrcode` (leitura pela câmera) | QR aponta para `/arvores/ARB-000001`. |
 | Relatórios | `jspdf` + `jspdf-autotable` (PDF), `exceljs` (XLSX), CSV UTF-8 | Gerados no servidor, com os mesmos filtros da tela. |
 | Gráficos | `recharts` | Dashboard. |
@@ -155,19 +155,21 @@ Para um ambiente real sem dados fictícios use `npm run db:bootstrap` com `ADMIN
 
 ## 6. Deploy na Vercel
 
-1. **Banco**: crie um PostgreSQL gerenciado (Neon, Supabase ou Vercel Postgres/Neon).
-   - `DATABASE_URL` = URL com *pooling* (ex.: Neon `-pooler`, Supabase porta 6543 com `?pgbouncer=true`).
-   - `DIRECT_URL` = conexão direta (usada pelas migrations).
-2. **Arquivos**: a Vercel não tem disco persistente → configure `STORAGE_DRIVER=s3` ([seção 8](#8-armazenamento-de-arquivos)).
-3. Importe o repositório na Vercel. Em *Settings › Build*, use **Build Command: `npm run vercel-build`** (aplica as migrations e compila).
-4. Variáveis de ambiente: todas do `.env.example` — especialmente `AUTH_SECRET`, `APP_URL` (ex.: `https://arborgest.vercel.app`), `CRON_SECRET` e as `S3_*`.
-5. Após o primeiro deploy, crie o administrador localmente apontando para o banco de produção:
-   ```bash
-   DATABASE_URL=... DIRECT_URL=... ADMIN_EMAIL=voce@empresa.com.br ADMIN_PASSWORD='SenhaForte123' npm run db:bootstrap
-   ```
-6. **Cron**: `vercel.json` agenda `/api/cron/notificacoes` diariamente (a Vercel envia `Authorization: Bearer $CRON_SECRET`).
+Caminho mais simples (tudo pelo painel da Vercel, sem copiar credenciais de banco/arquivos):
 
-Limites da Vercel: corpo de requisição ~4,5 MB por upload (fotos são comprimidas no aparelho para ~0,5–1 MB; PDFs grandes devem ser divididos) e tempo máximo de função conforme o plano (o relatório fotográfico em PDF declara `maxDuration = 60`).
+1. Importe o repositório do GitHub em *Add New › Project*. O `vercel.json` já define **Build Command `npm run vercel-build`**, que gera o Prisma Client, aplica as migrations, executa o `bootstrap` (perfis padrão + administrador) e compila.
+2. Em *Storage*, crie e conecte ao projeto:
+   - **Neon (Postgres)** — injeta `DATABASE_URL` (com pooling) e `DATABASE_URL_UNPOOLED` (usada automaticamente como `DIRECT_URL` nas migrations).
+   - **Blob** com acesso **Private** — injeta `BLOB_READ_WRITE_TOKEN`; o app passa a usar o driver `vercel-blob` automaticamente.
+3. Em *Settings › Environment Variables* defina:
+   - `AUTH_SECRET` — gere com `openssl rand -base64 32`;
+   - `ADMIN_EMAIL` e `ADMIN_PASSWORD` (8+ caracteres com letras e números) — o primeiro administrador é criado no build; depois de entrar, a senha pode ser trocada em *Meu perfil* e essas variáveis podem ser removidas;
+   - opcionais: `CRON_SECRET` (alertas diários via `vercel.json`), `APP_URL` (domínio próprio; sem ela usa o domínio da requisição), `SMTP_*` (e-mail de recuperação de senha).
+4. Faça *Redeploy* após definir as variáveis.
+
+Alternativas: qualquer Postgres (defina `DATABASE_URL` e `DIRECT_URL`) e armazenamento S3/R2/Supabase (`STORAGE_DRIVER=s3`, [seção 8](#8-armazenamento-de-arquivos)).
+
+Limites: corpo de requisição ~4,5 MB por upload (fotos são comprimidas no aparelho para ~0,5–1 MB) e tempo máximo de função conforme o plano (o relatório fotográfico em PDF declara `maxDuration = 60`). O plano Hobby permite 1 execução de cron por dia.
 
 ## 7. Deploy no Railway
 
