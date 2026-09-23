@@ -36,8 +36,13 @@ export async function teamOptions(): Promise<Option[]> {
   return rows.map((r) => ({ value: r.id, label: r.name }));
 }
 
-export async function speciesOptions(): Promise<Option[]> {
-  const rows = await db.species.findMany({ select: { id: true, popularName: true, scientificName: true }, orderBy: { popularName: "asc" } });
+/** `usedOnly`: apenas espécies com árvores cadastradas (para filtros). */
+export async function speciesOptions({ usedOnly = false } = {}): Promise<Option[]> {
+  const rows = await db.species.findMany({
+    where: usedOnly ? { trees: { some: {} } } : undefined,
+    select: { id: true, popularName: true, scientificName: true },
+    orderBy: { popularName: "asc" },
+  });
   return rows.map((r) => ({ value: r.id, label: `${r.popularName} — ${r.scientificName}` }));
 }
 

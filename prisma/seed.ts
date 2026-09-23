@@ -8,6 +8,7 @@ import { DEFAULT_ROLES } from "../src/lib/auth/permissions";
 import { computeRisk, crownArea, dapFromCap } from "../src/lib/arbo";
 import { refreshTreeCache } from "../src/lib/tree-cache";
 import { putObject } from "../src/lib/storage";
+import { speciesCatalogData } from "./data/species-catalog";
 
 const db = new PrismaClient();
 
@@ -26,28 +27,13 @@ const pickN = <T,>(a: readonly T[], n: number) => [...a].sort(() => rnd() - 0.5)
 const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000);
 const daysAhead = (n: number) => new Date(Date.now() + n * 86_400_000);
 
-const SPECIES = [
-  ["Tipuana tipu", "Tipuana", "Fabaceae", "EXOTICA", false, "América do Sul (Bolívia/Argentina)"],
-  ["Handroanthus chrysotrichus", "Ipê-amarelo", "Bignoniaceae", "NATIVA", false, "Mata Atlântica"],
-  ["Handroanthus impetiginosus", "Ipê-roxo", "Bignoniaceae", "NATIVA", false, "Cerrado / Mata Atlântica"],
-  ["Cenostigma pluviosum", "Sibipiruna", "Fabaceae", "NATIVA", false, "Mata Atlântica"],
-  ["Paubrasilia echinata", "Pau-brasil", "Fabaceae", "NATIVA", false, "Mata Atlântica"],
-  ["Ficus benjamina", "Fícus", "Moraceae", "EXOTICA", false, "Ásia"],
-  ["Licania tomentosa", "Oiti", "Chrysobalanaceae", "NATIVA", false, "Mata Atlântica (NE)"],
-  ["Delonix regia", "Flamboyant", "Fabaceae", "EXOTICA", false, "Madagascar"],
-  ["Syzygium cumini", "Jambolão", "Myrtaceae", "EXOTICA", true, "Ásia"],
-  ["Leucaena leucocephala", "Leucena", "Fabaceae", "EXOTICA", true, "América Central"],
-  ["Schinus terebinthifolia", "Aroeira-pimenteira", "Anacardiaceae", "NATIVA", false, "Mata Atlântica"],
-  ["Jacaranda mimosifolia", "Jacarandá-mimoso", "Bignoniaceae", "EXOTICA", false, "Argentina / Bolívia"],
-  ["Mangifera indica", "Mangueira", "Anacardiaceae", "EXOTICA", false, "Ásia"],
-  ["Ceiba speciosa", "Paineira-rosa", "Malvaceae", "NATIVA", false, "Mata Atlântica"],
-  ["Peltophorum dubium", "Canafístula", "Fabaceae", "NATIVA", false, "Mata Atlântica / Cerrado"],
-  ["Lagerstroemia indica", "Resedá", "Lythraceae", "EXOTICA", false, "Ásia"],
-  ["Syagrus romanzoffiana", "Jerivá", "Arecaceae", "NATIVA", false, "Mata Atlântica"],
-  ["Eucalyptus grandis", "Eucalipto", "Myrtaceae", "EXOTICA", false, "Austrália"],
-  ["Pinus elliottii", "Pinheiro-americano", "Pinaceae", "EXOTICA", true, "América do Norte"],
-  ["Tabebuia roseoalba", "Ipê-branco", "Bignoniaceae", "NATIVA", false, "Cerrado / Mata Atlântica"],
-] as const;
+// Espécies usadas nas árvores de demonstração (todas presentes no catálogo de referência)
+const DEMO_SPECIES = [
+  "Tipuana tipu", "Handroanthus chrysotrichus", "Handroanthus impetiginosus", "Cenostigma pluviosum", "Paubrasilia echinata",
+  "Ficus benjamina", "Licania tomentosa", "Delonix regia", "Syzygium cumini", "Leucaena leucocephala", "Schinus terebinthifolia",
+  "Jacaranda mimosifolia", "Mangifera indica", "Ceiba speciosa", "Peltophorum dubium", "Lagerstroemia indica",
+  "Syagrus romanzoffiana", "Eucalyptus grandis", "Pinus elliottii", "Tabebuia roseoalba",
+];
 
 async function placeholderPhoto(label: string, sub: string, hue: number) {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="900">
@@ -114,13 +100,9 @@ async function main() {
   });
 
   console.log("→ espécies…");
-  const species = [];
-  for (const [sci, pop, fam, origin, invasive, range] of SPECIES) {
-    const [genus, epithet] = sci.split(" ");
-    species.push(
-      await db.species.create({ data: { scientificName: sci, popularName: pop, family: fam, genus, epithet, origin, invasive, nativeRange: range } }),
-    );
-  }
+  await db.species.createMany({ data: speciesCatalogData() });
+  const species = await db.species.findMany({ where: { scientificName: { in: DEMO_SPECIES } }, orderBy: { scientificName: "asc" } });
+  if (species.length !== DEMO_SPECIES.length) throw new Error("Espécies de demonstração ausentes do catálogo.");
 
   console.log("→ clientes, contatos, oportunidades…");
   const c1 = await db.client.create({
@@ -131,8 +113,9 @@ async function main() {
       status: "ATIVO", notes: "Contrato anual de manejo. Assembleia em março.",
       contacts: {
         create: [
-          { name: "Marcos Lima", jobTitle: "Síndico", mobile: "(19) 98111-2233", whatsapp: "(19) 98111-2233", email: "marcos@paineiras.demo", isPrimary: true },
-          { name: "Juliana Prado", jobTitle: "Administradora", phone: "(19) 3251-1001", email: "adm@paineiras.demo" },
+          { name: "Marcos Lima", type: "GERAL", jobTitle: "Síndico", mobile: "(19) 98111-2233", whatsapp: "(19) 98111-2233", email: "marcos@paineiras.demo", isPrimary: true },
+          { name: "Juliana Prado", type: "ADMINISTRATIVO", jobTitle: "Administradora", phone: "(19) 3251-1001", email: "adm@paineiras.demo" },
+          { name: "Sérgio Paiva", type: "TECNICO", jobTitle: "Zelador", mobile: "(19) 98111-4455", whatsapp: "(19) 98111-4455" },
         ],
       },
     },
@@ -145,8 +128,10 @@ async function main() {
       status: "ATIVO",
       contacts: {
         create: [
-          { name: "Patrícia Souza", jobTitle: "Coordenadora de facilities", mobile: "(19) 99222-3344", whatsapp: "(19) 99222-3344", email: "patricia@valeverde.demo", isPrimary: true },
-          { name: "Eduardo Nunes", jobTitle: "Técnico de segurança", mobile: "(19) 99333-4455", email: "eduardo@valeverde.demo" },
+          { name: "Patrícia Souza", type: "GERAL", jobTitle: "Coordenadora de facilities", mobile: "(19) 99222-3344", whatsapp: "(19) 99222-3344", email: "patricia@valeverde.demo", isPrimary: true },
+          { name: "Eduardo Nunes", type: "TECNICO", jobTitle: "Técnico de segurança", mobile: "(19) 99333-4455", email: "eduardo@valeverde.demo" },
+          { name: "Luciana Ferraz", type: "COMERCIAL", jobTitle: "Compradora", phone: "(19) 3809-4410", email: "compras@valeverde.demo" },
+          { name: "Fábio Moreira", type: "ADMINISTRATIVO", jobTitle: "Contas a pagar", phone: "(19) 3809-4420", email: "financeiro@valeverde.demo" },
         ],
       },
     },
@@ -157,14 +142,14 @@ async function main() {
       segment: "PREFEITURA", phone: "(19) 3700-1000", email: "meioambiente@vilaserena.demo",
       address: "Praça da Matriz, s/n", district: "Centro", city: "Vila Serena", state: "SP", zipCode: "13100-000",
       status: "ATIVO", notes: "Contratação via ata de registro de preços.",
-      contacts: { create: [{ name: "Helena Duarte", jobTitle: "Secretária de Meio Ambiente", phone: "(19) 3700-1020", email: "helena@vilaserena.demo", isPrimary: true }] },
+      contacts: { create: [{ name: "Helena Duarte", type: "ADMINISTRATIVO", jobTitle: "Secretária de Meio Ambiente", phone: "(19) 3700-1020", email: "helena@vilaserena.demo", isPrimary: true }] },
     },
   });
   const c4 = await db.client.create({
     data: {
       legalName: "Colégio Horizonte Educacional S/A", tradeName: "Colégio Horizonte", clientType: "PJ", segment: "EDUCACAO",
       phone: "(19) 3322-7788", email: "manutencao@horizonte.demo", city: "Valinhos", state: "SP", status: "PROSPECT",
-      contacts: { create: [{ name: "Roberto Alves", jobTitle: "Gerente de manutenção", mobile: "(19) 98877-6655", isPrimary: true }] },
+      contacts: { create: [{ name: "Roberto Alves", type: "TECNICO", jobTitle: "Gerente de manutenção", mobile: "(19) 98877-6655", isPrimary: true }] },
     },
   });
 

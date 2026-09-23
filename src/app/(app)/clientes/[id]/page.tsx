@@ -6,7 +6,7 @@ import { requirePermission } from "@/lib/auth/session";
 import { hasPermission } from "@/lib/auth/permissions";
 import { CLIENT_STATUS, CLIENT_TYPES, CONTRACT_STATUS, OPPORTUNITY_STAGE, PROPERTY_TYPES, SEGMENTS, WORK_ORDER_STATUS, labelOf } from "@/lib/catalogs";
 import { fmtDate, fmtMoney, formatDocument, whatsappLink } from "@/lib/format";
-import { Badge, Card, DataList, FlowStatusBadge, LinkButton, PageHeader, TabLinks } from "@/components/ui";
+import { Badge, Card, ContactTypeBadge, DataList, FlowStatusBadge, LinkButton, PageHeader, TabLinks } from "@/components/ui";
 import { ActionButton } from "@/components/form";
 import { DocumentList } from "@/components/files/panels";
 import { DocumentUploader } from "@/components/files/uploaders";
@@ -23,7 +23,7 @@ export default async function ClientDetail({ params, searchParams }: { params: P
   const c = await db.client.findUnique({
     where: { id },
     include: {
-      contacts: { orderBy: [{ isPrimary: "desc" }, { name: "asc" }] },
+      contacts: { orderBy: [{ isPrimary: "desc" }, { type: "asc" }, { name: "asc" }] },
       properties: { include: { _count: { select: { trees: true } } }, orderBy: { name: "asc" } },
       opportunities: { orderBy: { createdAt: "desc" }, include: { owner: { select: { name: true } } } },
       contracts: { orderBy: { startDate: "desc" } },
@@ -94,7 +94,10 @@ export default async function ClientDetail({ params, searchParams }: { params: P
                 <li key={k.id} className="rounded-xl border border-stone-100 p-3">
                   <div className="flex items-center justify-between gap-2">
                     <Link href={`/contatos/${k.id}/editar`} className="font-medium hover:underline">{k.name}</Link>
-                    {k.isPrimary && <Badge tone="green">Principal</Badge>}
+                    <div className="flex shrink-0 gap-1">
+                      <ContactTypeBadge value={k.type} />
+                      {k.isPrimary && <Badge tone="green">Principal</Badge>}
+                    </div>
                   </div>
                   {k.jobTitle && <p className="text-xs text-stone-500">{k.jobTitle}</p>}
                   <div className="mt-2 flex flex-wrap gap-1.5">

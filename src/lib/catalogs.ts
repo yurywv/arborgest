@@ -44,6 +44,13 @@ export const PRIORITY: Record<string, string> = {
   URGENTE: "Urgente",
 };
 
+export const CONTACT_TYPE: Record<string, string> = {
+  GERAL: "Geral",
+  ADMINISTRATIVO: "Administrativo",
+  COMERCIAL: "Comercial",
+  TECNICO: "Técnico",
+};
+
 export const CLIENT_STATUS: Record<string, string> = {
   PROSPECT: "Prospect",
   ATIVO: "Ativo",

@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import type { Tree } from "@prisma/client";
-import { ActionForm, CheckboxGroup, Field, FormActions, FormSection, NumberField, SelectField, TextArea } from "@/components/form";
+import { ActionForm, CheckboxGroup, Field, FormActions, FormSection, NumberField, SearchSelectField, SelectField, TextArea } from "@/components/form";
 import { ClientPropertySelect } from "@/components/client-property-select";
 import { LocationInput } from "@/components/map/location-input";
 import {
@@ -39,8 +39,8 @@ export function TreeForm({
       </FormSection>
 
       <FormSection title="Identificação botânica">
-        <SelectField name="speciesId" label="Espécie" options={species} defaultValue={t.speciesId} placeholder="Não identificada"
-          hint={<>Não encontrou? <Link href="/especies/nova" target="_blank" className="link">Cadastrar espécie</Link></>} wrapClassName="sm:col-span-2" />
+        <SearchSelectField name="speciesId" label="Espécie" options={species} defaultValue={t.speciesId} emptyLabel="Não identificada — digite o nome popular ou científico"
+          hint={<>{species.length} espécies no catálogo. Não encontrou? <Link href="/especies/nova" target="_blank" className="link">Cadastrar espécie</Link></>} wrapClassName="sm:col-span-2" />
         <Field name="cultivar" label="Cultivar" defaultValue={t.cultivar} />
         <SelectField name="identificationConfidence" label="Confiança da identificação" options={ID_CONFIDENCE} defaultValue={t.identificationConfidence} />
         <TextArea name="botanicalNotes" label="Observação botânica" rows={2} defaultValue={t.botanicalNotes} wrapClassName="sm:col-span-2" />

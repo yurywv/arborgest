@@ -1,13 +1,14 @@
 import Link from "next/link";
 import { Contact as ContactIcon, MessageCircle, Phone, Plus } from "lucide-react";
-import type { Prisma } from "@prisma/client";
+import { ContactType, type Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/auth/session";
 import { hasPermission } from "@/lib/auth/permissions";
 import { ci, pageOf, spFlat, spGet, type SP } from "@/lib/query";
 import { clientOptions } from "@/lib/options";
 import { whatsappLink } from "@/lib/format";
-import { Badge, EmptyState, LinkButton, PageHeader, Pagination } from "@/components/ui";
+import { CONTACT_TYPE } from "@/lib/catalogs";
+import { Badge, ContactTypeBadge, EmptyState, LinkButton, PageHeader, Pagination } from "@/components/ui";
 import { FilterForm, FilterSelect, SearchBox } from "@/components/filters";
 
 export const metadata = { title: "Contatos" };
@@ -17,10 +18,13 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
   const sp = await searchParams;
   const q = spGet(sp, "q");
   const clientId = spGet(sp, "cliente");
+  const typeParam = spGet(sp, "tipo");
+  const type = typeParam && typeParam in ContactType ? (typeParam as ContactType) : undefined;
   const { page, pageSize, skip, take } = pageOf(sp, 30);
   const where: Prisma.ContactWhereInput = {
     ...(q && { OR: [{ name: ci(q) }, { email: ci(q) }, { jobTitle: ci(q) }, { mobile: { contains: q } }] }),
     ...(clientId && { clientId }),
+    ...(type && { type }),
   };
   const [rows, total, clients] = await Promise.all([
     db.contact.findMany({ where, skip, take, orderBy: { name: "asc" }, include: { client: { select: { id: true, legalName: true, tradeName: true } } } }),
@@ -33,6 +37,7 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
       <FilterForm>
         <SearchBox defaultValue={q} placeholder="Nome, e-mail, cargo, celular" />
         <FilterSelect name="cliente" label="Cliente" options={clients} value={clientId} />
+        <FilterSelect name="tipo" label="Classificação" options={Object.entries(CONTACT_TYPE).map(([value, label]) => ({ value, label }))} value={type} />
       </FilterForm>
       {rows.length === 0 ? <EmptyState icon={ContactIcon} title="Nenhum contato encontrado" /> : (
         <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -43,7 +48,10 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
                   <Link href={`/contatos/${k.id}/editar`} className="font-semibold hover:underline">{k.name}</Link>
                   <p className="truncate text-xs text-stone-500">{k.jobTitle ?? "—"} · <Link className="link" href={`/clientes/${k.client.id}`}>{k.client.tradeName ?? k.client.legalName}</Link></p>
                 </div>
-                {k.isPrimary && <Badge tone="green">Principal</Badge>}
+                <div className="flex shrink-0 flex-wrap justify-end gap-1">
+                  <ContactTypeBadge value={k.type} />
+                  {k.isPrimary && <Badge tone="green">Principal</Badge>}
+                </div>
               </div>
               {k.email && <p className="mt-2 truncate text-sm"><a className="link" href={`mailto:${k.email}`}>{k.email}</a></p>}
               <div className="mt-3 flex flex-wrap gap-1.5">

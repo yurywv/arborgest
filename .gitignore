@@ -7,3 +7,6 @@ uploads
 *.tsbuildinfo
 next-env.d.ts
 .DS_Store
+
+# capturas geradas pelos testes E2E
+e2e/screenshots/

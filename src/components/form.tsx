@@ -1,9 +1,9 @@
 "use client";
 
-import { createContext, useActionState, useContext, useEffect, useRef, useState, startTransition, useTransition } from "react";
+import { createContext, useActionState, useContext, useEffect, useId, useMemo, useRef, useState, startTransition, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import clsx from "clsx";
-import { AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
+import { AlertCircle, CheckCircle2, Loader2, X } from "lucide-react";
 import type { ActionState } from "@/lib/action-state";
 import type { Option } from "@/lib/catalogs";
 
@@ -181,6 +181,100 @@ export function SelectField({
           <option key={o.value} value={o.value}>{o.label}</option>
         ))}
       </select>
+    </FieldWrap>
+  );
+}
+
+const fold = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
+/**
+ * Seletor com busca para listas longas (ex.: catálogo de espécies).
+ * Filtra por todas as palavras digitadas, sem diferenciar acentos; envia o `value` num campo oculto.
+ */
+export function SearchSelectField({
+  name, label, hint, options, defaultValue, placeholder = "Digite para buscar…", required, wrapClassName, emptyLabel, maxResults = 60,
+}: {
+  name: string; label?: React.ReactNode; hint?: React.ReactNode; options: Option[]; defaultValue?: string | null;
+  placeholder?: string; required?: boolean; wrapClassName?: string; emptyLabel?: string; maxResults?: number;
+}) {
+  const { errors } = useFormCtx();
+  const err = errors?.[name];
+  const listId = useId();
+  const initial = options.find((o) => o.value === defaultValue);
+  const [value, setValue] = useState(initial?.value ?? "");
+  const [text, setText] = useState(initial?.label ?? "");
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(0);
+  const listRef = useRef<HTMLUListElement>(null);
+
+  const indexed = useMemo(() => options.map((o) => ({ o, k: fold(o.label) })), [options]);
+  const selectedLabel = options.find((o) => o.value === value)?.label ?? "";
+  const results = useMemo(() => {
+    const terms = fold(text === selectedLabel ? "" : text).split(/\s+/).filter(Boolean);
+    const hits = terms.length ? indexed.filter(({ k }) => terms.every((t) => k.includes(t))) : indexed;
+    return { total: hits.length, items: hits.slice(0, maxResults).map(({ o }) => o) };
+  }, [indexed, text, selectedLabel, maxResults]);
+
+  useEffect(() => {
+    listRef.current?.querySelector<HTMLElement>(`[data-i="${active}"]`)?.scrollIntoView({ block: "nearest" });
+  }, [active]);
+
+  const choose = (o: Option | null) => {
+    setValue(o?.value ?? "");
+    setText(o?.label ?? "");
+    setOpen(false);
+  };
+
+  return (
+    <FieldWrap name={name} label={label} hint={hint} required={required} className={wrapClassName}>
+      <input type="hidden" name={name} value={value} />
+      <div className="relative">
+        <input
+          id={`f-${name}`}
+          type="text"
+          role="combobox"
+          aria-expanded={open}
+          aria-controls={listId}
+          aria-autocomplete="list"
+          aria-invalid={!!err}
+          aria-activedescendant={open && results.items[active] ? `${listId}-${active}` : undefined}
+          autoComplete="off"
+          value={text}
+          placeholder={emptyLabel ?? placeholder}
+          className={clsx("input pr-10", err && "input-error")}
+          onFocus={(e) => { e.currentTarget.select(); setOpen(true); setActive(0); }}
+          onBlur={() => { setOpen(false); setText(selectedLabel); }}
+          onChange={(e) => { setText(e.target.value); setOpen(true); setActive(0); if (!e.target.value) setValue(""); }}
+          onKeyDown={(e) => {
+            if (e.key === "ArrowDown") { e.preventDefault(); setOpen(true); setActive((i) => Math.min(i + 1, results.items.length - 1)); }
+            else if (e.key === "ArrowUp") { e.preventDefault(); setActive((i) => Math.max(i - 1, 0)); }
+            else if (e.key === "Enter" && open) { e.preventDefault(); if (results.items[active]) choose(results.items[active]); }
+            else if (e.key === "Escape") { setOpen(false); setText(selectedLabel); }
+          }}
+        />
+        {value && (
+          <button type="button" aria-label="Limpar seleção" className="absolute inset-y-0 right-0 grid w-10 place-items-center text-stone-400 hover:text-stone-700"
+            onMouseDown={(e) => e.preventDefault()} onClick={() => choose(null)}>
+            <X className="size-4" />
+          </button>
+        )}
+        {open && (
+          <ul ref={listRef} id={listId} role="listbox"
+            className="absolute z-30 mt-1 max-h-72 w-full overflow-y-auto rounded-xl border border-stone-200 bg-white py-1 text-sm shadow-lg">
+            {results.items.length === 0 && <li className="px-3 py-2 text-stone-500">Nenhum resultado.</li>}
+            {results.items.map((o, i) => (
+              <li key={o.value} id={`${listId}-${i}`} data-i={i} role="option" aria-selected={o.value === value}
+                className={clsx("cursor-pointer px-3 py-2", i === active ? "bg-brand-50 text-brand-900" : "text-stone-800", o.value === value && "font-semibold")}
+                onMouseDown={(e) => e.preventDefault()} onMouseEnter={() => setActive(i)} onClick={() => choose(o)}>
+                {o.label}
+              </li>
+            ))}
+            {results.total > results.items.length && (
+              <li className="px-3 py-2 text-xs text-stone-500">+{results.total - results.items.length} resultados — continue digitando para refinar.</li>
+            )}
+          </ul>
+        )}
+      </div>
     </FieldWrap>
   );
 }

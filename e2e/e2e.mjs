@@ -62,6 +62,18 @@ try {
   const clientUrl = page.url();
   check("cliente criado", (await page.getByRole("heading", { level: 1 }).textContent())?.includes("Teste E2E") ?? false);
 
+  // 2b. Vários contatos classificados
+  for (const [nome, tipo] of [["Ana Financeiro", "Administrativo"], ["Beto Compras", "Comercial"], ["Caio Zelador", "Técnico"]]) {
+    await page.getByRole("link", { name: "Novo", exact: true }).first().click();
+    await page.waitForURL(/\/contatos\/novo/); await ready();
+    await fill("Nome", nome);
+    await select("Classificação", tipo);
+    await save();
+    await page.waitForURL(clientUrl); await ready();
+  }
+  const contactBadges = await page.locator("li", { hasText: /Ana Financeiro|Beto Compras|Caio Zelador/ }).allTextContents();
+  check("contatos múltiplos com classificação", contactBadges.length === 3 && ["Administrativo", "Comercial", "Técnico"].every((t) => contactBadges.join(" ").includes(t)));
+
   // 3. Propriedade + setor
   await page.goto(`${clientUrl.replace(/\/clientes\/(.*)$/, "/propriedades/nova?clientId=$1")}`);
   await fill("Nome da propriedade", `Residencial E2E ${stamp}`);
@@ -84,7 +96,8 @@ try {
   await page.getByText(/Localização capturada/).waitFor();
   const lat = await page.locator('input[name="latitude"]').inputValue();
   check("captura de GPS preenche coordenadas", lat.startsWith("-22.87"), `lat ${lat}`);
-  await lbl("Espécie").selectOption({ label: "Ipê-amarelo — Handroanthus chrysotrichus" });
+  await lbl("Espécie").fill("chrysotrichus");
+  await page.getByRole("option", { name: "Ipê-amarelo-cascudo — Handroanthus chrysotrichus" }).click();
   await page.getByLabel("CAP — circunferência").fill("125,7");
   const dap = await page.getByLabel("DAP — diâmetro").inputValue();
   check("DAP calculado a partir do CAP", dap === "40", `DAP ${dap}`);

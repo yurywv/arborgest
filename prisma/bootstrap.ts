@@ -1,11 +1,13 @@
 /* Inicialização de ambiente real (sem dados de demonstração):
  *   - cria/atualiza os perfis de acesso padrão
+ *   - carrega o catálogo de referência de espécies (só insere as que faltam; não altera edições)
  *   - cria o primeiro administrador a partir de ADMIN_EMAIL / ADMIN_PASSWORD / ADMIN_NAME
  * Idempotente. Executar: npm run db:bootstrap
  */
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { DEFAULT_ROLES } from "../src/lib/auth/permissions";
+import { speciesCatalogData } from "./data/species-catalog";
 
 const db = new PrismaClient();
 
@@ -18,6 +20,10 @@ async function main() {
     });
   }
   console.log(`✓ ${DEFAULT_ROLES.length} perfis garantidos`);
+
+  const catalog = speciesCatalogData();
+  const { count } = await db.species.createMany({ data: catalog, skipDuplicates: true });
+  console.log(`✓ catálogo de espécies: ${count} nova(s), ${catalog.length - count} já existente(s)`);
 
   const email = process.env.ADMIN_EMAIL?.trim().toLowerCase();
   const password = process.env.ADMIN_PASSWORD;

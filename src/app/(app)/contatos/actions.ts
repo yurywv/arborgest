@@ -4,12 +4,14 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { assertPermission } from "@/lib/auth/session";
 import { audit } from "@/lib/audit";
-import { bool, formObject, optEmail, optStr, reqStr, runAction, finish } from "@/lib/actions";
+import { ContactType } from "@prisma/client";
+import { bool, enumVals, reqEnum, formObject, optEmail, optStr, reqStr, runAction, finish } from "@/lib/actions";
 import type { ActionState } from "@/lib/action-state";
 
 const schema = z.object({
   clientId: reqStr("Cliente", 40),
   name: reqStr("Nome", 150),
+  type: reqEnum(enumVals(ContactType), "Classificação"),
   jobTitle: optStr(100),
   phone: optStr(30),
   mobile: optStr(30),

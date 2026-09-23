@@ -64,7 +64,8 @@ arborgest/
 │  ├─ schema.prisma            # modelo relacional completo (comentado)
 │  ├─ migrations/              # migrations versionadas
 │  ├─ seed.ts                  # dados de demonstração (apaga dados! bloqueado em produção)
-│  └─ bootstrap.ts             # produção: perfis padrão + primeiro administrador
+│  ├─ bootstrap.ts             # produção: perfis padrão + catálogo de espécies + primeiro administrador
+│  └─ data/species-catalog.ts  # catálogo de referência (586 espécies arbóreas, nativas e exóticas)
 ├─ public/                     # ícones PWA, service worker (sw.js), offline.html
 ├─ scripts/
 │  ├─ smoke-test.mjs           # 111 rotas × perfis × permissões × exportações
@@ -150,6 +151,10 @@ Gerar segredo: `openssl rand -base64 32`.
 **Usuários de demonstração** (senha `Arbor@2026`): `admin@`, `gestor@`, `tecnico@`, `comercial@`, `operacional@`, `consulta@` — todos em `@arborgest.demo`.
 
 Para um ambiente real sem dados fictícios use `npm run db:bootstrap` com `ADMIN_EMAIL` e `ADMIN_PASSWORD` definidos.
+
+**Catálogo de espécies.** O `bootstrap` (executado a cada deploy na Vercel) carrega `prisma/data/species-catalog.ts`: 586 espécies arbóreas, sendo 276 nativas do Brasil (Mata Atlântica, Cerrado, Amazônia, Caatinga, Pampa e Pantanal) e 310 exóticas usadas em arborização urbana, paisagismo, fruticultura e silvicultura no mundo. Cada espécie traz família, origem, distribuição natural, indicação de invasora no Brasil e sinônimos. Só são inseridas as espécies que ainda não existem, comparando pelo nome científico. Edições feitas no sistema não são sobrescritas. Para incluir espécies, acrescente linhas ao arquivo e faça um novo deploy, ou cadastre em *Espécies › Nova espécie*.
+
+**Contatos.** Cada cliente pode ter vários contatos, classificados como *Geral*, *Administrativo*, *Comercial* ou *Técnico*. Um deles pode ser marcado como principal.
 
 > GPS e câmera no celular exigem **HTTPS** (ou `localhost`). Para testar no celular em rede local, use um túnel HTTPS (ex.: `cloudflared tunnel --url http://localhost:3000`) ou o deploy de homologação.
 

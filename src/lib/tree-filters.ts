@@ -47,6 +47,6 @@ export function treeWhere(sp: SP): Prisma.TreeWhereInput {
 }
 
 export async function treeFilterOptions() {
-  const [clients, properties, sectors, species] = await Promise.all([clientOptions(), propertyOptions(), sectorOptions(), speciesOptions()]);
+  const [clients, properties, sectors, species] = await Promise.all([clientOptions(), propertyOptions(), sectorOptions(), speciesOptions({ usedOnly: true })]);
   return { clients, properties, sectors, species };
 }
