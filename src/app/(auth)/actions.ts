@@ -10,7 +10,7 @@ import { audit } from "@/lib/audit";
 import { clientIp, createSession, destroySession, getCurrentUser } from "@/lib/auth/session";
 import { hashPassword, passwordSchema, verifyPassword } from "@/lib/password";
 import { isLimited, rateLimit, resetLimit } from "@/lib/rate-limit";
-import { sendMail } from "@/lib/mail";
+import { mailLayout, sendMail } from "@/lib/mail";
 import { appBaseUrl } from "@/lib/qr";
 import type { ActionState } from "@/lib/action-state";
 
@@ -65,11 +65,22 @@ export async function requestPasswordReset(_: ActionState, fd: FormData): Promis
         data: { userId: user.id, tokenHash: sha256(token), expiresAt: new Date(Date.now() + 60 * 60_000) },
       });
       const link = `${await appBaseUrl()}/redefinir-senha?token=${token}`;
-      await sendMail(
-        user.email,
-        "Redefinição de senha — ArborGest",
-        `Olá, ${user.name}.\n\nPara criar uma nova senha, acesse (válido por 1 hora):\n${link}\n\nSe você não solicitou, ignore este e-mail.`,
-      );
+      try {
+        await sendMail(
+          user.email,
+          "Redefinição de senha — ArborGest",
+          `Olá, ${user.name}.\n\nPara criar uma nova senha, acesse (válido por 1 hora):\n${link}\n\nSe você não solicitou, ignore este e-mail; sua senha atual continua valendo.`,
+          mailLayout({
+            title: "Redefinição de senha",
+            paragraphs: [`Olá, ${user.name}.`, "Recebemos um pedido para redefinir a senha da sua conta no ArborGest. O link abaixo vale por 1 hora e pode ser usado uma única vez."],
+            button: { label: "Criar nova senha", href: link },
+            footer: "Se você não solicitou, ignore este e-mail — sua senha atual continua valendo.",
+          }),
+        );
+      } catch (e) {
+        // Não revela ao solicitante se o e-mail existe nem detalhes do servidor SMTP.
+        console.error("[mail] falha ao enviar redefinição de senha:", e);
+      }
       await audit(user.id, "PASSWORD_RESET_REQUEST", "User", user.id);
     }
     // Resposta idêntica exista ou não o e-mail.

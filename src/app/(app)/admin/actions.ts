@@ -9,6 +9,7 @@ import { hashPassword, passwordSchema } from "@/lib/password";
 import { bool, fieldError, formObject, optStr, reqStr, runAction, UserError, finish } from "@/lib/actions";
 import { SETTING_DEFAULTS } from "@/lib/settings";
 import { generateNotifications } from "@/lib/notifications";
+import { mailConfigured, mailLayout, sendMail } from "@/lib/mail";
 import type { ActionState } from "@/lib/action-state";
 
 // ── Usuários ──
@@ -131,6 +132,25 @@ export async function runNotificationsNow(): Promise<ActionState> {
     await assertPermission("settings:manage");
     const r = await generateNotifications();
     return { ok: true, message: `${r.created} notificação(ões) gerada(s).` };
+  });
+}
+
+export async function sendTestMail(): Promise<ActionState> {
+  return runAction(async () => {
+    const user = await assertPermission("settings:manage");
+    if (!mailConfigured()) return { ok: false, message: "SMTP não configurado: defina SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD e MAIL_FROM no ambiente e publique novamente." };
+    try {
+      await sendMail(
+        user.email,
+        "Teste de e-mail — ArborGest",
+        "Este é um e-mail de teste. Se você o recebeu, o envio de e-mails (recuperação de senha) está funcionando.",
+        mailLayout({ title: "Teste de e-mail", paragraphs: ["Se você recebeu esta mensagem, o envio de e-mails do ArborGest está funcionando — inclusive a recuperação de senha."] }),
+      );
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return { ok: false, message: `Falha no envio: ${msg.slice(0, 300)}` };
+    }
+    return { ok: true, message: `E-mail de teste enviado para ${user.email}. Verifique a caixa de entrada (e o spam).` };
   });
 }
 

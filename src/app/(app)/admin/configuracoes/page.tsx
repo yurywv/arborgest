@@ -1,4 +1,4 @@
-import { BellRing } from "lucide-react";
+import { BellRing, MailCheck } from "lucide-react";
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/auth/session";
 import { getSettings } from "@/lib/settings";
@@ -6,7 +6,9 @@ import { fmtDateTime } from "@/lib/format";
 import { Card, DataList, PageHeader } from "@/components/ui";
 import { ActionButton } from "@/components/form";
 import { SettingsForm } from "../forms";
-import { runNotificationsNow } from "../actions";
+import { runNotificationsNow, sendTestMail } from "../actions";
+import { driver } from "@/lib/storage";
+import { mailConfigured } from "@/lib/mail";
 
 export const metadata = { title: "Configurações" };
 
@@ -17,7 +19,7 @@ export default async function SettingsPage() {
     db.auditLog.findMany({ orderBy: { createdAt: "desc" }, take: 50, include: { user: { select: { name: true } } } }),
     db.setting.findUnique({ where: { key: "notifications_last_run" } }),
   ]);
-  const storage = process.env.STORAGE_DRIVER ?? "local";
+  const storage = driver();
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       <div className="lg:col-span-2"><PageHeader title="Configurações" /></div>
@@ -25,12 +27,15 @@ export default async function SettingsPage() {
       <div className="space-y-4">
         <Card title="Ambiente">
           <DataList cols={1} items={[
-            ["Armazenamento de arquivos", storage === "s3" ? `S3 compatível (${process.env.S3_BUCKET ?? "?"})` : "Disco local (desenvolvimento / volume Railway)"],
-            ["E-mail (SMTP)", process.env.SMTP_HOST ? process.env.SMTP_HOST : "Não configurado — links de recuperação aparecem no log do servidor"],
+            ["Armazenamento de arquivos", storage === "s3" ? `S3 compatível (${process.env.S3_BUCKET ?? "?"})` : storage === "vercel-blob" ? "Vercel Blob" : "Disco local (desenvolvimento / volume Railway)"],
+            ["E-mail (SMTP)", mailConfigured() ? `${process.env.SMTP_HOST}:${process.env.SMTP_PORT || 587} · ${process.env.MAIL_FROM ?? process.env.SMTP_USER ?? ""}` : "Não configurado — links de recuperação aparecem no log do servidor"],
             ["URL pública", process.env.APP_URL ?? "—"],
             ["Última geração de alertas", lastRun ? fmtDateTime(lastRun.value) : "Nunca"],
           ]} />
-          <div className="mt-4"><ActionButton action={runNotificationsNow}><BellRing className="size-4" /> Gerar alertas agora</ActionButton></div>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <ActionButton action={runNotificationsNow}><BellRing className="size-4" /> Gerar alertas agora</ActionButton>
+            <ActionButton action={sendTestMail} showSuccess><MailCheck className="size-4" /> Enviar e-mail de teste</ActionButton>
+          </div>
         </Card>
         <Card title="Log de auditoria (últimos 50)">
           <ul className="max-h-[28rem] space-y-1.5 overflow-y-auto text-xs">

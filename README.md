@@ -169,8 +169,18 @@ Caminho mais simples (tudo pelo painel da Vercel, sem copiar credenciais de banc
 3. Em *Settings › Environment Variables* defina:
    - `AUTH_SECRET` — gere com `openssl rand -base64 32`;
    - `ADMIN_EMAIL` e `ADMIN_PASSWORD` (8+ caracteres com letras e números) — o primeiro administrador é criado no build; depois de entrar, a senha pode ser trocada em *Meu perfil* e essas variáveis podem ser removidas;
-   - opcionais: `CRON_SECRET` (alertas diários via `vercel.json`), `APP_URL` (domínio próprio; sem ela usa o domínio da requisição), `SMTP_*` (e-mail de recuperação de senha).
+   - opcionais: `CRON_SECRET` (alertas diários via `vercel.json`), `APP_URL` (domínio próprio; sem ela usa o domínio da requisição), `SMTP_*` e `MAIL_FROM` (e-mail de recuperação de senha — veja abaixo).
 4. Faça *Redeploy* após definir as variáveis.
+
+**E-mail com Gmail / Google Workspace** (recuperação de senha):
+
+1. Na conta Google remetente, ative a verificação em duas etapas e crie uma **senha de app** em <https://myaccount.google.com/apppasswords>.
+2. Na Vercel (*Settings › Environment Variables*, ambiente Production), defina:
+   `SMTP_HOST=smtp.gmail.com`, `SMTP_PORT=465`, `SMTP_USER=<endereço completo>`, `SMTP_PASSWORD=<senha de app, sem espaços>` (marque como *Sensitive*) e `MAIL_FROM=ArborGest <mesmo endereço>`.
+   Defina também `APP_URL=https://<seu domínio>` para que os links dos e-mails usem sempre o domínio oficial.
+3. Faça *Redeploy* e, em *Administração › Configurações*, clique em **Enviar e-mail de teste**. Uma falha mostra a mensagem do servidor SMTP.
+
+Limites do Gmail: cerca de 500 destinatários/dia (conta pessoal) ou 2.000/dia (Workspace).
 
 Alternativas: qualquer Postgres (defina `DATABASE_URL` e `DIRECT_URL`) e armazenamento S3/R2/Supabase (`STORAGE_DRIVER=s3`, [seção 8](#8-armazenamento-de-arquivos)).
 

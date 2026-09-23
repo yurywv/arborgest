@@ -372,6 +372,7 @@ export function ActionButton({
   variant = "secondary",
   size,
   redirectTo,
+  showSuccess,
 }: {
   action: () => Promise<ActionState>;
   confirm?: string;
@@ -380,6 +381,8 @@ export function ActionButton({
   variant?: "primary" | "secondary" | "danger" | "ghost" | "danger-ghost";
   size?: "sm";
   redirectTo?: string;
+  /** Mostra a mensagem de sucesso retornada pela action. */
+  showSuccess?: boolean;
 }) {
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -400,6 +403,7 @@ export function ActionButton({
               return;
             }
             setError(null);
+            if (showSuccess && r?.message) window.alert(r.message);
             if (redirectTo) router.push(redirectTo);
             else router.refresh();
           });
