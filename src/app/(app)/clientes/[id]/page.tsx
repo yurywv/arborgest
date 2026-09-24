@@ -11,6 +11,7 @@ import { ActionButton } from "@/components/form";
 import { DocumentList } from "@/components/files/panels";
 import { DocumentUploader } from "@/components/files/uploaders";
 import { deleteClient } from "../actions";
+import { ESTIMATE_STATUS, ESTIMATE_STATUS_TONE } from "@/lib/pricing/labels";
 
 export const metadata = { title: "Cliente" };
 
@@ -27,6 +28,7 @@ export default async function ClientDetail({ params, searchParams }: { params: P
       properties: { include: { _count: { select: { trees: true } } }, orderBy: { name: "asc" } },
       opportunities: { orderBy: { createdAt: "desc" }, include: { owner: { select: { name: true } } } },
       contracts: { orderBy: { startDate: "desc" } },
+      pricingEstimates: { orderBy: { createdAt: "desc" }, take: 50, select: { id: true, number: true, title: true, status: true, negotiatedTotal: true, date: true } },
       workOrders: { orderBy: { createdAt: "desc" }, take: 30 },
       documents: { orderBy: { createdAt: "desc" }, include: { uploadedBy: { select: { name: true } } } },
     },
@@ -38,6 +40,7 @@ export default async function ClientDetail({ params, searchParams }: { params: P
     { key: "resumo", label: "Resumo" },
     { key: "propriedades", label: "Propriedades", count: c.properties.length },
     { key: "oportunidades", label: "Oportunidades", count: c.opportunities.length },
+    ...(can("pricing:read") ? [{ key: "orcamentos", label: "Orçamentos", count: c.pricingEstimates.length }] : []),
     { key: "contratos", label: "Contratos", count: c.contracts.length },
     { key: "os", label: "Ordens de serviço", count: c.workOrders.length },
     { key: "documentos", label: "Documentos", count: c.documents.length },
@@ -141,6 +144,24 @@ export default async function ClientDetail({ params, searchParams }: { params: P
                     <p className="text-xs text-stone-500">{fmtMoney(o.estimatedValue)} · {o.probability}% · {o.owner?.name ?? "sem responsável"} · previsão {fmtDate(o.expectedDate)}</p>
                   </div>
                   <Badge tone={o.stage === "GANHA" ? "green" : o.stage === "PERDIDA" ? "gray" : "blue"}>{OPPORTUNITY_STAGE[o.stage]}</Badge>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+      )}
+
+      {tab === "orcamentos" && can("pricing:read") && (
+        <Card title="Orçamentos e propostas" actions={can("pricing:write") && <LinkButton size="sm" href={`/precificacao/novo?cliente=${id}`} icon={Plus}>Novo orçamento</LinkButton>}>
+          {c.pricingEstimates.length === 0 ? <p className="text-sm text-stone-500">Nenhum orçamento.</p> : (
+            <ul className="divide-y divide-stone-100">
+              {c.pricingEstimates.map((e) => (
+                <li key={e.id} className="flex items-center justify-between gap-3 py-2.5">
+                  <div className="min-w-0">
+                    <Link href={`/precificacao/${e.id}`} className="link">{e.number}</Link>
+                    <p className="truncate text-xs text-stone-500">{fmtDate(e.date)} · {fmtMoney(e.negotiatedTotal)}{e.title ? ` · ${e.title}` : ""}</p>
+                  </div>
+                  <Badge tone={ESTIMATE_STATUS_TONE[e.status]}>{ESTIMATE_STATUS[e.status]}</Badge>
                 </li>
               ))}
             </ul>

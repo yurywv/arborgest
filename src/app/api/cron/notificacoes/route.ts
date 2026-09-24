@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { generateNotifications } from "@/lib/notifications";
+import { expireEstimates } from "@/lib/pricing/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,5 +12,6 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
   }
   const r = await generateNotifications();
-  return NextResponse.json({ ok: true, ...r });
+  const expiredEstimates = await expireEstimates();
+  return NextResponse.json({ ok: true, ...r, expiredEstimates });
 }

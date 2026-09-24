@@ -34,12 +34,14 @@ function sender() {
   return process.env.SMTP_USER ? `ArborGest <${process.env.SMTP_USER}>` : "ArborGest <no-reply@localhost>";
 }
 
-export async function sendMail(to: string, subject: string, text: string, html?: string) {
+export type MailAttachment = { filename: string; content: Buffer; contentType?: string };
+
+export async function sendMail(to: string, subject: string, text: string, html?: string, attachments?: MailAttachment[]) {
   if (!mailConfigured()) {
     console.info(`[mail:dev] Para: ${to}\nAssunto: ${subject}\n${text}`);
     return { delivered: false };
   }
-  await getTransport().sendMail({ from: sender(), to, subject, text, html });
+  await getTransport().sendMail({ from: sender(), to, subject, text, html, attachments });
   return { delivered: true };
 }
 

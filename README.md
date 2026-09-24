@@ -1,6 +1,6 @@
 # ArborGest — Gestão Arbórea Georreferenciada
 
-CRM verticalizado para arboricultura: clientes, propriedades, **exemplares arbóreos com prontuário individual**, inspeções, avaliação de risco (ISA TRAQ), intervenções, ordens de serviço, mapa, QR Code, fotos, documentos, dashboard e relatórios (PDF/Excel/CSV). Interface em português do Brasil, mobile-first e instalável como PWA.
+CRM verticalizado para arboricultura: clientes, propriedades, **exemplares arbóreos com prontuário individual**, inspeções, avaliação de risco (ISA TRAQ), intervenções, ordens de serviço, mapa, QR Code, fotos, documentos, dashboard, relatórios (PDF/Excel/CSV) e **precificação com propostas comerciais** (Pricing Engine versionado que substitui a planilha de preços — veja [docs/precificacao](docs/precificacao/README.md)). Interface em português do Brasil, mobile-first e instalável como PWA.
 
 - [1. Arquitetura](#1-arquitetura)
 - [2. Estrutura de pastas](#2-estrutura-de-pastas)
@@ -15,6 +15,7 @@ CRM verticalizado para arboricultura: clientes, propriedades, **exemplares arbó
 - [11. Segurança](#11-segurança)
 - [12. Testes e validação](#12-testes-e-validação)
 - [13. Decisões técnicas e limitações conhecidas](#13-decisões-técnicas-e-limitações-conhecidas)
+- [Precificação e propostas](docs/precificacao/README.md) · [Validação da lógica legada](docs/precificacao/validacao-logica-legada.md)
 
 ---
 
@@ -244,7 +245,9 @@ Mantenha o bucket **privado** (sem acesso público).
 npm run typecheck                                   # TypeScript
 npm run build                                       # build de produção
 npm run start                                       # em outro terminal
-npm run test:smoke -- http://localhost:3000         # 111 rotas + permissões dos 6 perfis + exportações
+npm run test:unit                                   # Pricing Engine: fórmulas, políticas e paridade com o Excel (vitest)
+npm run test:smoke -- http://localhost:3000         # 133 rotas + permissões dos 6 perfis + exportações
+npm run test:e2e:pricing -- http://localhost:3000   # fluxo de precificação completo (orçamento → proposta → aceite → contrato/OS)
 npx playwright install chromium                     # uma vez
 SERVER_LOG=caminho/do/log npm run test:e2e -- http://localhost:3000 e2e/screenshots
 ```

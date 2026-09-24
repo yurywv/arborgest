@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Building2, MapPinned, Search, Trees } from "lucide-react";
+import { Building2, Calculator, MapPinned, Search, Trees } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth/session";
 import { hasPermission } from "@/lib/auth/permissions";
@@ -24,12 +24,13 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
     if (t) redirect(`/arvores/${t.code}`);
   }
   const can = (p: Parameters<typeof hasPermission>[1]) => hasPermission(user.permissions, p);
-  const [trees, clients, properties] = await Promise.all([
+  const [trees, clients, properties, estimates] = await Promise.all([
     can("trees:read") ? db.tree.findMany({ where: treeWhere({ q }), take: 30, orderBy: { code: "asc" }, include: { species: true, property: { select: { name: true } } } }) : [],
     can("clients:read") ? db.client.findMany({ where: { OR: [{ legalName: ci(q) }, { tradeName: ci(q) }, { document: { contains: q.replace(/\D/g, "") || q } }, { address: ci(q) }] }, take: 10 }) : [],
     can("properties:read") ? db.property.findMany({ where: { OR: [{ name: ci(q) }, { address: ci(q) }, { district: ci(q) }, { city: ci(q) }] }, take: 10, include: { client: { select: { tradeName: true, legalName: true } } } }) : [],
+    can("pricing:read") ? db.pricingEstimate.findMany({ where: { OR: [{ number: ci(q) }, { title: ci(q) }, { proposals: { some: { number: ci(q) } } }] }, take: 10, orderBy: { createdAt: "desc" }, include: { client: { select: { tradeName: true, legalName: true } } } }) : [],
   ]);
-  const total = trees.length + clients.length + properties.length;
+  const total = trees.length + clients.length + properties.length + estimates.length;
   return (
     <>
       <PageHeader title={`Resultados para “${q}”`} subtitle={`${total} resultado(s)`} />
@@ -54,6 +55,11 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
           {clients.length > 0 && (
             <Card title={<span className="flex items-center gap-2"><Building2 className="size-4" /> Clientes</span>}>
               <ul className="space-y-2">{clients.map((c) => <li key={c.id}><Link className="link" href={`/clientes/${c.id}`}>{c.tradeName ?? c.legalName}</Link><p className="text-xs text-stone-500">{c.city}</p></li>)}</ul>
+            </Card>
+          )}
+          {estimates.length > 0 && (
+            <Card title={<span className="flex items-center gap-2"><Calculator className="size-4" /> Orçamentos</span>}>
+              <ul className="space-y-2">{estimates.map((e) => <li key={e.id}><Link className="link" href={`/precificacao/${e.id}`}>{e.number}</Link><p className="text-xs text-stone-500">{e.client.tradeName ?? e.client.legalName}{e.title ? ` · ${e.title}` : ""}</p></li>)}</ul>
             </Card>
           )}
           {properties.length > 0 && (

@@ -19,6 +19,9 @@ const [client, property, sector, contract, insp, risk, interv, wo, species, team
   db.riskAssessment.findFirst(), db.intervention.findFirst(), db.workOrder.findFirst(), db.species.findFirst(), db.team.findFirst(),
   db.role.findFirst(), db.user.findFirst(), db.contact.findFirst(), db.opportunity.findFirst(),
 ]);
+const est = await db.pricingEstimate.findFirst({ where: { proposals: { some: {} } }, include: { items: { take: 1 }, proposals: { take: 1 } } });
+const calc = await db.pricingCalculation.findFirst();
+const draft = await db.pricingEstimate.findFirst({ where: { status: { in: ["RASCUNHO", "EM_ELABORACAO", "EM_APROVACAO_INTERNA"] } }, include: { items: { take: 1 } } });
 
 const pages = [
   "/dashboard", "/clientes", "/clientes/novo", `/clientes/${client.id}`, `/clientes/${client.id}?aba=propriedades`, `/clientes/${client.id}?aba=documentos`, `/clientes/${client.id}/editar`,
@@ -37,6 +40,11 @@ const pages = [
   `/relatorios?tipo=historico&arvore=${tree.code}`, "/busca?q=ipe", `/busca?q=${tree.code}`, "/notificacoes", "/perfil",
   "/admin/usuarios", "/admin/usuarios/novo", `/admin/usuarios/${user.id}`, "/admin/equipes", "/admin/equipes/nova", `/admin/equipes/${team.id}`,
   "/admin/perfis", "/admin/perfis/novo", `/admin/perfis/${role.id}`, "/admin/configuracoes",
+  "/precificacao", "/precificacao?pendentes=1", "/precificacao/novo", `/precificacao/novo?oportunidade=${opp.id}`, `/precificacao/novo?propriedade=${property.id}`,
+  "/precificacao/simulador", `/precificacao/${est.id}`, ...["proposta", "historico", "dados"].map((a) => `/precificacao/${est.id}?aba=${a}`),
+  `/precificacao/${draft.id}/item`, `/precificacao/${draft.id}/item?item=${draft.items[0].id}`, `/precificacao/${draft.id}?aba=dados`, `/precificacao/calculos/${calc.id}`,
+  `/clientes/${est.clientId}?aba=orcamentos`, "/admin/precificacao", ...["versoes", "textos", "servicos"].map((a) => `/admin/precificacao?aba=${a}`),
+  "/admin/precificacao/validacao", `/api/propostas/${est.proposals[0].id}/pdf`, "/busca?q=2026-0000",
   "/api/health", `/api/qrcode/${tree.code}`, `/api/qrcode/${tree.code}?format=png`,
   ...["inventario", "fotografico", "risco"].flatMap((t) => ["csv", "xlsx", "pdf"].map((f) => `/api/relatorios/${t}?format=${f}`)),
 ];
@@ -82,11 +90,11 @@ console.log("ANÔNIMO: bloqueios verificados");
 
 // 3) Permissões por perfil
 const expectations = {
-  "consulta@arborgest.demo": { allow: ["/dashboard", "/arvores", `/arvores/${tree.code}`, "/mapa", "/relatorios"], deny: ["/arvores/novo", "/clientes/novo", "/admin/usuarios", "/admin/perfis", "/inspecoes/nova", "/admin/configuracoes"], apiDeny: ["/api/relatorios/inventario?format=csv"] },
-  "tecnico@arborgest.demo": { allow: ["/arvores/novo", "/inspecoes/nova", "/riscos/nova", "/intervencoes/nova"], deny: ["/clientes/novo", "/contratos/novo", "/admin/usuarios", "/admin/perfis"] },
-  "comercial@arborgest.demo": { allow: ["/clientes/novo", "/oportunidades/nova", "/contratos/novo"], deny: ["/inspecoes/nova", "/arvores/novo", "/admin/perfis"] },
-  "operacional@arborgest.demo": { allow: ["/ordens-servico/nova", "/intervencoes/nova"], deny: ["/oportunidades", "/contratos", "/arvores/novo", "/admin/usuarios"] },
-  "gestor@arborgest.demo": { allow: ["/admin/usuarios", "/arvores/novo", "/contratos/novo"], deny: ["/admin/perfis", "/admin/configuracoes", "/admin/usuarios/novo"] },
+  "consulta@arborgest.demo": { allow: ["/dashboard", "/arvores", `/arvores/${tree.code}`, "/mapa", "/relatorios"], deny: ["/arvores/novo", "/clientes/novo", "/admin/usuarios", "/admin/perfis", "/inspecoes/nova", "/admin/configuracoes", "/precificacao/novo", "/admin/precificacao"], apiDeny: ["/api/relatorios/inventario?format=csv"] },
+  "tecnico@arborgest.demo": { allow: ["/arvores/novo", "/inspecoes/nova", "/riscos/nova", "/intervencoes/nova", "/precificacao/novo", "/precificacao/simulador"], deny: ["/clientes/novo", "/contratos/novo", "/admin/usuarios", "/admin/perfis", "/admin/precificacao"] },
+  "comercial@arborgest.demo": { allow: ["/clientes/novo", "/oportunidades/nova", "/contratos/novo", "/precificacao", "/precificacao/novo"], deny: ["/inspecoes/nova", "/arvores/novo", "/admin/perfis", "/admin/precificacao"] },
+  "operacional@arborgest.demo": { allow: ["/ordens-servico/nova", "/intervencoes/nova"], deny: ["/oportunidades", "/contratos", "/arvores/novo", "/admin/usuarios", "/precificacao"], apiDeny: [`/api/propostas/${est.proposals[0].id}/pdf`] },
+  "gestor@arborgest.demo": { allow: ["/admin/usuarios", "/arvores/novo", "/contratos/novo", "/precificacao/novo"], deny: ["/admin/perfis", "/admin/configuracoes", "/admin/usuarios/novo", "/admin/precificacao"] },
 };
 for (const [email, e] of Object.entries(expectations)) {
   const u = await db.user.findUnique({ where: { email } });

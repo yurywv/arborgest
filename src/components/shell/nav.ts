@@ -1,6 +1,6 @@
 import {
   LayoutDashboard, Building2, Contact, Target, FileSignature, MapPinned, Trees, Map, ClipboardCheck,
-  ShieldAlert, Wrench, ClipboardList, CalendarDays, FileBarChart, Users, UsersRound, KeyRound, Settings, Leaf,
+  ShieldAlert, Wrench, Calculator, SlidersHorizontal, ClipboardList, CalendarDays, FileBarChart, Users, UsersRound, KeyRound, Settings, Leaf,
   type LucideIcon,
 } from "lucide-react";
 import type { Permission } from "@/lib/auth/permissions";
@@ -16,6 +16,7 @@ export const NAV: NavGroup[] = [
       { href: "/clientes", label: "Clientes", icon: Building2, perm: "clients:read" },
       { href: "/contatos", label: "Contatos", icon: Contact, perm: "clients:read" },
       { href: "/oportunidades", label: "Oportunidades", icon: Target, perm: "opportunities:read" },
+      { href: "/precificacao", label: "Precificação", icon: Calculator, perm: "pricing:read" },
       { href: "/contratos", label: "Contratos", icon: FileSignature, perm: "contracts:read" },
     ],
   },
@@ -46,6 +47,7 @@ export const NAV: NavGroup[] = [
       { href: "/admin/equipes", label: "Equipes", icon: UsersRound, perm: "users:read" },
       { href: "/admin/perfis", label: "Perfis", icon: KeyRound, perm: "roles:manage" },
       { href: "/admin/configuracoes", label: "Configurações", icon: Settings, perm: "settings:manage" },
+      { href: "/admin/precificacao", label: "Parâmetros de preço", icon: SlidersHorizontal, perm: "pricing:params" },
     ],
   },
 ];

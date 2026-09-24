@@ -9,6 +9,13 @@ import { computeRisk, crownArea, dapFromCap } from "../src/lib/arbo";
 import { refreshTreeCache } from "../src/lib/tree-cache";
 import { putObject } from "../src/lib/storage";
 import { speciesCatalogData } from "./data/species-catalog";
+import { ensurePricingSetup } from "../src/lib/pricing/store-core";
+import { persistCalculation, recomputeEstimate } from "../src/lib/pricing/estimate-core";
+import { calculate, SERVICES } from "../src/lib/pricing/registry";
+import { dec, money } from "../src/lib/pricing/decimal";
+import { PROPOSAL_TEXT_DEFAULTS } from "../src/lib/pricing/proposal-texts";
+import type { PricingParams, ServiceCode } from "../src/lib/pricing/types";
+import type { PricingEstimateStatus, ProposalStatus } from "@prisma/client";
 
 const db = new PrismaClient();
 
@@ -58,6 +65,7 @@ async function main() {
   }
   console.log("→ limpando dados…");
   await db.$transaction([
+    db.pricingAuditLog.deleteMany(), db.pricingEstimate.deleteMany(), db.pricingParameterVersion.deleteMany(), db.pricingService.deleteMany(),
     db.notification.deleteMany(), db.auditLog.deleteMany(), db.photo.deleteMany(), db.document.deleteMany(),
     db.inspectionFinding.deleteMany(), db.inspection.deleteMany(), db.riskAssessment.deleteMany(),
     db.intervention.deleteMany(), db.workOrder.deleteMany(), db.treeMeasurement.deleteMany(), db.tree.deleteMany(),
@@ -370,6 +378,137 @@ async function main() {
 
   console.log("→ atualizando cache das árvores…");
   for (const t of trees) await refreshTreeCache(t.id, db);
+
+  console.log("→ precificação, orçamentos e propostas…");
+  await ensurePricingSetup(db);
+  const version = await db.pricingParameterVersion.findFirstOrThrow({ where: { active: true } });
+  const pricing = version.snapshot as unknown as PricingParams;
+  let estSeq = 0, propSeq = 0;
+  const findOpp = (description: string) => db.opportunity.findFirstOrThrow({ where: { description } });
+  const treesOf = async (propertyId: string, n: number, where: object = {}) =>
+    (await db.tree.findMany({ where: { propertyId, status: "ATIVA", ...where }, orderBy: { code: "asc" }, take: n, select: { id: true } })).map((t) => t.id);
+
+  async function seedEstimate(o: {
+    clientId: string; propertyId?: string; contactId?: string; opportunityId?: string; title: string; status: PricingEstimateStatus; ago: number;
+    owner: { id: string; name: string }; techId: string;
+    items: { service: ServiceCode; inputs: Record<string, unknown>; description: string; treeIds?: string[] }[];
+    discount?: { type: "PERCENT" | "AMOUNT"; value: string; reason: string };
+    approvedBy?: { id: string }; proposal?: ProposalStatus;
+  }) {
+    const number = `${year}-${String(++estSeq).padStart(5, "0")}`;
+    const date = daysAgo(o.ago);
+    await db.$transaction(async (tx) => {
+      const e = await tx.pricingEstimate.create({
+        data: {
+          number, title: o.title, clientId: o.clientId, propertyId: o.propertyId, contactId: o.contactId, opportunityId: o.opportunityId,
+          date, validUntil: new Date(date.getTime() + 30 * 86_400_000), status: "EM_ELABORACAO", parameterVersionId: version.id,
+          commercialOwnerId: o.owner.id, technicalOwnerId: o.techId, createdById: o.owner.id, createdAt: date, taxRate: pricing.general.imposto,
+          commercialNotes: "Valores válidos para execução em horário comercial.",
+        },
+      });
+      await tx.pricingAuditLog.create({ data: { userId: o.owner.id, action: "CRIACAO", entity: "PricingEstimate", entityId: e.id, estimateId: e.id, newValue: JSON.stringify({ number, versao: version.label }), createdAt: date } });
+      for (const [idx, it] of o.items.entries()) {
+        const treeIds = it.treeIds ?? [];
+        const raw = treeIds.length ? { ...it.inputs, trees: treeIds.length } : { ...it.inputs, trees: (it.inputs.trees as number) || 2 };
+        const { inputs, result } = calculate(it.service, raw, pricing);
+        const item = await tx.pricingEstimateItem.create({
+          data: {
+            estimateId: e.id, order: idx, serviceCode: it.service, description: it.description, quantity: inputs.trees,
+            inputs: inputs as never, operationalCost: money(dec(result.operationalCost)).toString(), calculatedPrice: result.finalPriceRounded,
+            unitPrice: result.unitPriceRounded, negotiatedPrice: result.finalPriceRounded, effectiveMargin: dec(result.effectiveMargin).toDecimalPlaces(6).toString(),
+            trees: { connect: treeIds.map((id) => ({ id })) },
+          },
+        });
+        const calc = await persistCalculation(tx, { version, params: pricing, service: it.service, inputs, result, user: o.owner, treeIds, estimateId: e.id, itemId: item.id });
+        await tx.pricingEstimateItem.update({ where: { id: item.id }, data: { currentCalculationId: calc.id } });
+        await tx.pricingAuditLog.create({ data: { userId: o.owner.id, action: "ITEM_CRIADO", entity: "PricingEstimateItem", entityId: item.id, estimateId: e.id, field: "calculatedPrice", newValue: result.finalPriceRounded, createdAt: date } });
+      }
+      if (o.discount) await tx.pricingEstimate.update({ where: { id: e.id }, data: { discountType: o.discount.type, discountValue: o.discount.value, discountReason: o.discount.reason } });
+      const t = await recomputeEstimate(tx, e.id);
+      if (o.discount) {
+        await tx.pricingOverride.create({
+          data: {
+            estimateId: e.id, type: o.discount.type === "PERCENT" ? "DESCONTO_PERCENTUAL" : "DESCONTO_VALOR", newValue: o.discount.value, reason: o.discount.reason, userId: o.owner.id,
+            calculatedPrice: t.itemsTotal, negotiatedPrice: t.negotiatedTotal, difference: dec(t.negotiatedTotal.toString()).minus(dec(t.itemsTotal.toString())).toString(), createdAt: date,
+          },
+        });
+      }
+      const level = t.requiredApproval!;
+      if (o.approvedBy || o.status === "EM_APROVACAO_INTERNA") {
+        await tx.proposalApproval.create({
+          data: {
+            estimateId: e.id, level, status: o.approvedBy ? "APROVADO" : "PENDENTE", marginAtRequest: t.effectiveMargin ?? 0, totalAtRequest: t.negotiatedTotal,
+            requestedById: o.owner.id, requestedAt: date, ...(o.approvedBy && { decidedById: o.approvedBy.id, decidedAt: date, comment: "Aprovado (dados de demonstração)" }),
+          },
+        });
+      }
+      const accepted = o.status === "ACEITO";
+      await tx.pricingEstimate.update({
+        where: { id: e.id },
+        data: {
+          status: o.status, ...(o.approvedBy && { approvedLevel: level, approvedAt: date }),
+          ...(["ENVIADO_CLIENTE", "EM_NEGOCIACAO", "ACEITO"].includes(o.status) && { sentAt: daysAgo(o.ago - 2) }),
+          ...(accepted && { acceptedAt: daysAgo(Math.max(o.ago - 6, 0)) }),
+        },
+      });
+      if (o.proposal) {
+        const items = await tx.pricingEstimateItem.findMany({ where: { estimateId: e.id }, orderBy: { order: "asc" } });
+        await tx.commercialProposal.create({
+          data: {
+            number: `PROP-${year}-${String(++propSeq).padStart(5, "0")}`, estimateId: e.id, status: o.proposal, date: daysAgo(o.ago - 1),
+            validUntil: new Date(date.getTime() + 30 * 86_400_000), clientId: o.clientId, contactId: o.contactId, propertyId: o.propertyId,
+            title: `Proposta — ${o.title}`, object: `Prestação de serviços de ${items.map((i) => `${SERVICES[i.serviceCode as ServiceCode].name.toLowerCase()} (${i.quantity} árvores)`).join(", ")}.`,
+            scope: items.map((i) => `• ${SERVICES[i.serviceCode as ServiceCode].name}: ${i.quantity} exemplar(es) — ${i.description}.`).join("\n"),
+            deadline: PROPOSAL_TEXT_DEFAULTS.proposal_deadline, paymentTerms: PROPOSAL_TEXT_DEFAULTS.proposal_payment_terms, conditions: PROPOSAL_TEXT_DEFAULTS.proposal_conditions,
+            assumptions: PROPOSAL_TEXT_DEFAULTS.proposal_assumptions, exclusions: PROPOSAL_TEXT_DEFAULTS.proposal_exclusions, responsibilities: PROPOSAL_TEXT_DEFAULTS.proposal_responsibilities,
+            subtotal: t.itemsTotal, discountAmount: t.discountAmount, total: t.negotiatedTotal, createdById: o.owner.id,
+            ...(o.proposal !== "EMITIDA" && { sentAt: daysAgo(o.ago - 2) }), ...(o.proposal === "ACEITA" && { acceptedAt: daysAgo(Math.max(o.ago - 6, 0)) }),
+            items: {
+              create: items.map((i, idx) => ({
+                order: idx, serviceCode: i.serviceCode, title: SERVICES[i.serviceCode as ServiceCode].name, description: i.description, quantity: i.quantity, unit: "árvore",
+                unitPrice: money(dec(i.negotiatedPrice.toString()).div(i.quantity)).toString(), total: i.negotiatedPrice, estimateItemId: i.id,
+              })),
+            },
+          },
+        });
+      }
+      if (o.opportunityId && accepted) await tx.opportunity.update({ where: { id: o.opportunityId }, data: { stage: "GANHA", probability: 100, estimatedValue: t.negotiatedTotal } });
+    });
+  }
+
+  const c1Contact = await db.contact.findFirst({ where: { clientId: c1.id, isPrimary: true } });
+  const c2Contact = await db.contact.findFirst({ where: { clientId: c2.id, isPrimary: true } });
+  const oppC1 = await db.opportunity.create({ data: { clientId: c1.id, description: "Manejo 2026 — inventário, poda e supressão", service: "MANEJO", stage: "NEGOCIACAO", probability: 60, ownerId: comercial.id, source: "CLIENTE_ATUAL" } });
+  await seedEstimate({
+    clientId: c1.id, propertyId: props[0].id, contactId: c1Contact?.id, opportunityId: oppC1.id, title: "Manejo 2026 — áreas comuns", status: "ACEITO", ago: 20,
+    owner: comercial, techId: tecnico.id, approvedBy: admin, proposal: "ACEITA",
+    discount: { type: "PERCENT", value: "0.05", reason: "Cliente com contrato ativo — desconto de fidelidade." },
+    items: [
+      { service: "INVENTARIO", description: "Inventário georreferenciado com plaqueta e QR Code", inputs: { trees: 380, distanceKm: 40, difficulty: 2, auxiliaries: 2, lodging: false, toll: 0 } },
+      { service: "PODA", description: "Poda de limpeza e raleamento dos exemplares selecionados", treeIds: await treesOf(props[0].id, 6),
+        inputs: { trees: 0, distanceKm: 40, difficulty: 2, auxiliaries: 3, lodging: false, toll: 0, serviceType: 1, license: false, cacamba: true, fuelLiters: 15, modifiers: ["ALTURA"] } },
+      { service: "SUPRESSAO", description: "Supressão com licenciamento de exemplares condenados", treeIds: await treesOf(props[0].id, 2, { currentRisk: { in: ["ALTO", "EXTREMO"] } }),
+        inputs: { trees: 0, distanceKm: 40, difficulty: 2, auxiliaries: 4, lodging: false, toll: 0, serviceType: 1, compensation: true, cacamba: true, fuelLiters: 20, modifiers: ["REDE_ELETRICA"] } },
+    ],
+  });
+  await seedEstimate({
+    clientId: c2.id, propertyId: props[1].id, contactId: c2Contact?.id, opportunityId: (await findOpp("Ampliação do contrato para o CD Sumaré")).id,
+    title: "Supressão e inventário — Planta Hortolândia", status: "EM_NEGOCIACAO", ago: 8, owner: comercial, techId: tecnico2.id, approvedBy: gestor, proposal: "ENVIADA",
+    items: [
+      { service: "SUPRESSAO", description: "Supressão de 7 exemplares no estacionamento, com compensação", inputs: { trees: 7, distanceKm: 60, difficulty: 2, auxiliaries: 3, lodging: false, toll: 12.4, serviceType: 1, compensation: true, cacamba: true, fuelLiters: 25, modifiers: ["ACESSO_DIFICIL", "CONCRETO"] } },
+      { service: "INVENTARIO", description: "Inventário das áreas verdes 1 e 2", inputs: { trees: 150, distanceKm: 60, difficulty: 1, auxiliaries: 1, lodging: false, toll: 12.4 } },
+    ],
+  });
+  await seedEstimate({
+    clientId: c4.id, opportunityId: (await findOpp("Inventário arbóreo e laudo de risco do campus")).id, title: "Inventário do campus", status: "EM_APROVACAO_INTERNA", ago: 3,
+    owner: comercial, techId: tecnico.id, discount: { type: "PERCENT", value: "0.12", reason: "Concorrência com proposta de menor valor." },
+    items: [{ service: "INVENTARIO", description: "Inventário completo do campus com QR Code", inputs: { trees: 420, distanceKm: 30, difficulty: 2, auxiliaries: 2, lodging: false, toll: 0 } }],
+  });
+  await seedEstimate({
+    clientId: c3.id, propertyId: props[3].id, title: "Poda de limpeza — Praça Central", status: "RASCUNHO", ago: 1, owner: gestor, techId: tecnico.id,
+    items: [{ service: "PODA", description: "Poda de limpeza", inputs: { trees: 12, distanceKm: 25, difficulty: 1, auxiliaries: 2, lodging: false, toll: 0, serviceType: 2, license: true, cacamba: true, fuelLiters: 8, modifiers: [] } }],
+  });
+  await db.counter.createMany({ data: [{ key: `estimate:${year}`, value: estSeq }, { key: `proposal:${year}`, value: propSeq }] });
 
   await db.auditLog.create({ data: { userId: admin.id, action: "SEED", entity: "System", summary: "Dados de demonstração carregados" } });
   console.log(`✓ seed concluído: ${trees.length} árvores, ${props.length} propriedades, ${props.reduce((s, p) => s + p.sectors.length, 0)} setores.`);

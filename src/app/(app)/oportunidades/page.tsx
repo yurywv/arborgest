@@ -23,6 +23,7 @@ const STAGE_COLOR: Record<string, string> = {
 export default async function OpportunitiesPage({ searchParams }: { searchParams: Promise<SP> }) {
   const user = await requirePermission("opportunities:read");
   const canWrite = hasPermission(user.permissions, "opportunities:write");
+  const canPrice = hasPermission(user.permissions, "pricing:write");
   const sp = await searchParams;
   const clientId = spGet(sp, "cliente");
   const ownerId = spGet(sp, "responsavel");
@@ -72,6 +73,7 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
                     </div>
                     <p className="text-xs text-stone-500">{o.owner?.name ?? "Sem responsável"} · {fmtDate(o.expectedDate)}</p>
                     {canWrite && <StageSelect id={o.id} stage={o.stage} />}
+                    {canPrice && !["GANHA", "PERDIDA"].includes(o.stage) && <Link href={`/precificacao/novo?oportunidade=${o.id}`} className="btn btn-secondary btn-sm w-full">Precificar</Link>}
                   </li>
                 ))}
               </ul>

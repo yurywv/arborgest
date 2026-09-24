@@ -14,6 +14,7 @@ export const PERMISSION_GROUPS = [
   { key: "interventions", label: "Intervenções", actions: ["read", "write", "delete"] },
   { key: "workorders", label: "Ordens de serviço", actions: ["read", "write", "delete"] },
   { key: "files", label: "Fotos e documentos", actions: ["read", "write", "delete"] },
+  { key: "pricing", label: "Precificação e propostas", actions: ["read", "write", "negotiate", "approve", "direct", "costs", "params"] },
   { key: "reports", label: "Relatórios", actions: ["view", "export"] },
   { key: "users", label: "Usuários e equipes", actions: ["read", "manage"] },
   { key: "roles", label: "Perfis de acesso", actions: ["manage"] },
@@ -27,6 +28,11 @@ export const ACTION_LABELS: Record<string, string> = {
   delete: "Excluir",
   export: "Exportar",
   manage: "Gerenciar",
+  negotiate: "Negociar (desconto, margem, preço)",
+  approve: "Aprovar (gerencial)",
+  direct: "Aprovar (diretoria)",
+  costs: "Ver custos e margem",
+  params: "Parâmetros de preço",
 };
 
 export type Permission = {
@@ -40,7 +46,7 @@ export const ALL_PERMISSIONS = PERMISSION_GROUPS.flatMap((g) =>
 const READ_ALL: Permission[] = [
   "dashboard:view", "clients:read", "opportunities:read", "contracts:read", "properties:read",
   "trees:read", "inspections:read", "risk:read", "interventions:read", "workorders:read",
-  "files:read", "reports:view",
+  "files:read", "reports:view", "pricing:read",
 ];
 
 const without = (list: Permission[], ...remove: Permission[]) => list.filter((p) => !remove.includes(p));
@@ -56,7 +62,7 @@ export const DEFAULT_ROLES: { key: string; name: string; description: string; pe
     key: "GESTOR",
     name: "Gestor",
     description: "Gestão técnica e comercial completa; consulta usuários.",
-    permissions: without(ALL_PERMISSIONS, "users:manage", "roles:manage", "settings:manage"),
+    permissions: without(ALL_PERMISSIONS, "users:manage", "roles:manage", "settings:manage", "pricing:direct", "pricing:params"),
   },
   {
     key: "TECNICO",
@@ -65,7 +71,7 @@ export const DEFAULT_ROLES: { key: string; name: string; description: string; pe
     permissions: [
       ...READ_ALL,
       "reports:export", "trees:write", "species:write", "inspections:write", "risk:write",
-      "interventions:write", "workorders:write", "files:write", "properties:write",
+      "interventions:write", "workorders:write", "files:write", "properties:write", "pricing:write",
     ],
   },
   {
@@ -76,6 +82,7 @@ export const DEFAULT_ROLES: { key: string; name: string; description: string; pe
       ...READ_ALL,
       "reports:export", "clients:write", "opportunities:write", "opportunities:delete",
       "contracts:write", "properties:write", "files:write",
+      "pricing:write", "pricing:negotiate", "pricing:costs",
     ],
   },
   {
@@ -83,7 +90,7 @@ export const DEFAULT_ROLES: { key: string; name: string; description: string; pe
     name: "Operacional",
     description: "Execução de ordens de serviço e intervenções.",
     permissions: [
-      ...without(READ_ALL, "opportunities:read", "contracts:read"),
+      ...without(READ_ALL, "opportunities:read", "contracts:read", "pricing:read"),
       "workorders:write", "interventions:write", "files:write",
     ],
   },
@@ -93,6 +100,11 @@ export const DEFAULT_ROLES: { key: string; name: string; description: string; pe
     description: "Somente leitura.",
     permissions: READ_ALL,
   },
+];
+
+/** Permissões acrescentadas aos perfis de sistema já existentes quando o módulo é instalado (bootstrap). */
+export const PERMISSION_MIGRATIONS: { id: string; perms: Permission[] }[] = [
+  { id: "pricing-v1", perms: ALL_PERMISSIONS.filter((p) => p.startsWith("pricing:")) },
 ];
 
 export function hasPermission(perms: readonly string[] | undefined, p: Permission) {

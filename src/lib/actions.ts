@@ -4,6 +4,7 @@ import { Prisma } from "@prisma/client";
 import { redirect, unstable_rethrow } from "next/navigation";
 import { ForbiddenError } from "./auth/session";
 import type { ActionState } from "./action-state";
+import { EngineError } from "./pricing/engine";
 
 export class UserError extends Error {}
 
@@ -22,7 +23,7 @@ export async function runAction(fn: () => Promise<ActionState | void>): Promise<
       }
       return { ok: false, message: "Verifique os campos destacados.", errors, ts: Date.now() };
     }
-    if (e instanceof ForbiddenError || e instanceof UserError) {
+    if (e instanceof ForbiddenError || e instanceof UserError || e instanceof EngineError) {
       return { ok: false, message: e.message, ts: Date.now() };
     }
     if (e instanceof Prisma.PrismaClientKnownRequestError) {

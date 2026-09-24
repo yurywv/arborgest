@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Pencil, Plus, Trash2, Navigation } from "lucide-react";
+import { Pencil, Plus, Trash2, Navigation, Calculator } from "lucide-react";
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/auth/session";
 import { hasPermission } from "@/lib/auth/permissions";
@@ -59,6 +59,7 @@ export default async function PropertyDetail({ params, searchParams }: { params:
         actions={
           <>
             {can("trees:write") && <LinkButton href={`/arvores/novo?propertyId=${id}`} variant="primary" icon={Plus}>Nova árvore</LinkButton>}
+            {can("pricing:write") && <LinkButton href={`/precificacao/novo?propriedade=${id}`} icon={Calculator}>Precificar</LinkButton>}
             {can("properties:write") && <LinkButton href={`/propriedades/${id}/editar`} icon={Pencil}>Editar</LinkButton>}
             {can("properties:delete") && (
               <ActionButton action={deleteProperty.bind(null, id)} confirm="Excluir esta propriedade?" variant="danger-ghost" redirectTo="/propriedades"><Trash2 className="size-4" /></ActionButton>

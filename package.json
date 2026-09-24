@@ -18,7 +18,10 @@
     "icons": "node scripts/generate-icons.mjs",
     "test:smoke": "node scripts/smoke-test.mjs",
     "test:e2e": "node e2e/e2e.mjs",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "test:unit": "vitest run",
+    "pricing:parity": "tsx scripts/pricing-parity/generate-excel-fixtures.mts",
+    "test:e2e:pricing": "node e2e/pricing.mjs"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -33,6 +36,7 @@
     "@vercel/blob": "^2.8.0",
     "bcryptjs": "^3.0.3",
     "clsx": "^2.1.1",
+    "decimal.js": "^10.6.0",
     "exceljs": "^4.4.0",
     "html5-qrcode": "^2.3.8",
     "jose": "^6.2.12",
@@ -64,6 +68,7 @@
     "prisma": "^6.19.3",
     "tailwindcss": "^4.3.3",
     "tsx": "^4.23.15",
-    "typescript": "5.9"
+    "typescript": "5.9",
+    "vitest": "^3.2.7"
   }
 }

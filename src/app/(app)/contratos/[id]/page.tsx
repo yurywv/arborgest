@@ -20,7 +20,7 @@ export default async function ContractDetail({ params }: { params: Promise<{ id:
   const { id } = await params;
   const c = await db.contract.findUnique({
     where: { id },
-    include: { client: true, property: true, owner: true, documents: { orderBy: { createdAt: "desc" }, include: { uploadedBy: { select: { name: true } } } } },
+    include: { client: true, property: true, owner: true, pricingEstimate: { select: { id: true, number: true } }, documents: { orderBy: { createdAt: "desc" }, include: { uploadedBy: { select: { name: true } } } } },
   });
   if (!c) notFound();
   return (
@@ -49,6 +49,7 @@ export default async function ContractDetail({ params }: { params: Promise<{ id:
             ["Periodicidade", labelOf(PERIODICITY, c.periodicity)],
             ["Responsável", c.owner?.name],
             ["Cadastro", fmtDate(c.createdAt)],
+            ...(c.pricingEstimate ? [["Orçamento de origem", <Link key="e" className="link" href={`/precificacao/${c.pricingEstimate.id}`}>{c.pricingEstimate.number}</Link>] as [string, React.ReactNode]] : []),
           ]} />
           <div className="mt-4 space-y-3 text-sm">
             <div><p className="text-xs font-medium text-stone-500">Objeto</p><p className="whitespace-pre-line">{c.object}</p></div>

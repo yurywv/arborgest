@@ -6,7 +6,8 @@
  */
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
-import { DEFAULT_ROLES } from "../src/lib/auth/permissions";
+import { DEFAULT_ROLES, PERMISSION_MIGRATIONS } from "../src/lib/auth/permissions";
+import { ensurePricingSetup } from "../src/lib/pricing/store-core";
 import { speciesCatalogData } from "./data/species-catalog";
 
 const db = new PrismaClient();
@@ -20,6 +21,24 @@ async function main() {
     });
   }
   console.log(`✓ ${DEFAULT_ROLES.length} perfis garantidos`);
+
+  // Novos módulos: acrescenta as permissões padrão aos perfis de sistema já existentes (uma única vez,
+  // para não desfazer ajustes posteriores feitos em Administração › Perfis).
+  for (const m of PERMISSION_MIGRATIONS) {
+    const key = `perm_migration:${m.id}`;
+    if (await db.setting.findUnique({ where: { key } })) continue;
+    for (const r of DEFAULT_ROLES) {
+      const wanted = r.permissions.filter((p) => m.perms.includes(p));
+      if (!wanted.length) continue;
+      const role = await db.role.findUnique({ where: { key: r.key } });
+      if (role) await db.role.update({ where: { id: role.id }, data: { permissions: [...new Set([...role.permissions, ...wanted])] } });
+    }
+    await db.setting.create({ data: { key, value: new Date().toISOString() } });
+    console.log(`✓ permissões do módulo "${m.id}" aplicadas aos perfis`);
+  }
+
+  const pricing = await ensurePricingSetup(db);
+  console.log(pricing.created ? "✓ precificação: versão 1.0 (legado Excel) criada" : "✓ precificação: parâmetros existentes mantidos");
 
   const catalog = speciesCatalogData();
   const { count } = await db.species.createMany({ data: catalog, skipDuplicates: true });

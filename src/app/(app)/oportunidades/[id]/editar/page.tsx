@@ -5,7 +5,7 @@ import { requirePermission } from "@/lib/auth/session";
 import { hasPermission } from "@/lib/auth/permissions";
 import { clientOptions, userOptions } from "@/lib/options";
 import { toNum } from "@/lib/format";
-import { PageHeader } from "@/components/ui";
+import { LinkButton, PageHeader } from "@/components/ui";
 import { ActionButton } from "@/components/form";
 import { OpportunityForm } from "../../opportunity-form";
 import { deleteOpportunity } from "../../actions";
@@ -23,9 +23,12 @@ export default async function EditOpportunity({ params }: { params: Promise<{ id
       <PageHeader
         title="Editar oportunidade"
         back={{ href: "/oportunidades", label: "Oportunidades" }}
-        actions={hasPermission(user.permissions, "opportunities:delete") && (
-          <ActionButton action={deleteOpportunity.bind(null, id)} confirm="Excluir esta oportunidade?" variant="danger-ghost" redirectTo="/oportunidades"><Trash2 className="size-4" /> Excluir</ActionButton>
-        )}
+        actions={<>
+          {hasPermission(user.permissions, "pricing:write") && <LinkButton href={`/precificacao/novo?oportunidade=${id}`}>Precificar</LinkButton>}
+          {hasPermission(user.permissions, "opportunities:delete") && (
+            <ActionButton action={deleteOpportunity.bind(null, id)} confirm="Excluir esta oportunidade?" variant="danger-ghost" redirectTo="/oportunidades"><Trash2 className="size-4" /> Excluir</ActionButton>
+          )}
+        </>}
       />
       <OpportunityForm opp={{ ...o, estimatedValue: toNum(o.estimatedValue) }} clients={clients} users={users} />
     </div>
