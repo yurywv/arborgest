@@ -6,7 +6,7 @@
  */
 import { D, type DecimalT, ceil, dec, fmtBRL, fmtN, fmtPct, money, s } from "./decimal";
 import type {
-  BaseInputs, CalcComponent, CalcResult, CalcWarning, ComponentGroup, Difficulty, EngineVersion, ModifierDef,
+  BaseInputs, CalcComponent, CalcResult, CalcWarning, ComponentGroup, Difficulty, EngineVersion, FieldOperationInputs, ModifierDef,
   PricingParams, ServiceCode,
 } from "./types";
 import { DIFFICULTY_LABEL } from "./types";
@@ -57,8 +57,17 @@ export function commonBlock(
 ) {
   const g = p.general;
   const sp = p.services[service];
-  const prod = dec(sp.productivity[inp.difficulty as Difficulty]);
+  const rawProd = sp.productivity[inp.difficulty as Difficulty];
+  if (rawProd === undefined || rawProd === "") throw new EngineError(`Nível de dificuldade "${DIFFICULTY_LABEL[inp.difficulty as Difficulty] ?? inp.difficulty}" indisponível para este serviço.`);
+  const prod = dec(rawProd);
   if (prod.lte(0)) throw new EngineError("Produtividade deve ser maior que zero.");
+  const hint = sp.difficultyHints?.[inp.difficulty as Difficulty];
+  // Valores regionais informados no item prevalecem sobre o padrão dos parâmetros.
+  const has = (v: number | null | undefined) => v !== null && v !== undefined;
+  const meal = has(inp.mealCost) ? dec(inp.mealCost!) : dec(g.alimentacaoPessoaDia);
+  const lodgingDay = has(inp.lodgingCost) ? dec(inp.lodgingCost!) : dec(g.hospedagemPessoaDia);
+  const mealTag = has(inp.mealCost) ? " (valor regional)" : "";
+  const lodgingTag = has(inp.lodgingCost) ? " (valor regional)" : "";
   const n = dec(inp.trees);
   const baseDays = ceil(n.div(prod));
   const extraDays = opts.extraDays ?? 0;
@@ -74,7 +83,7 @@ export function commonBlock(
   const techCharged = opts.techniciansCharged === "FIXED_ONE" ? dec(1) : technicians;
 
   calc.add("arvores", "Quantidade", n, plural(n, "árvore", "árvores"), "QTD", "num");
-  calc.add("produtividade", "Produtividade", prod, `${fmtN(prod)} árvores/dia (${DIFFICULTY_LABEL[inp.difficulty as Difficulty]})`, "QTD", "num");
+  calc.add("produtividade", "Produtividade", prod, `${fmtN(prod)} árvores/dia (${DIFFICULTY_LABEL[inp.difficulty as Difficulty]}${hint ? ` — ${hint}` : ""})`, "QTD", "num");
   calc.add("dias", "Dias estimados", days,
     `⌈${fmtN(n)} ÷ ${fmtN(prod)}⌉ = ${fmtN(baseDays)}${extraDays ? ` + ${extraDays} (rede elétrica) = ${fmtN(days)}` : ""}`, "QTD", "num");
   calc.add("equipe", "Equipe", persons,
@@ -95,11 +104,11 @@ export function commonBlock(
   const deslocamento = calc.add("deslocamento", "Deslocamento",
     dec(inp.distanceKm).mul(dec(g.custoKm)).plus(dec(inp.toll)).mul(days).mul(persons),
     `(${fmtN(inp.distanceKm)} km × ${fmtBRL(g.custoKm)} + pedágio ${fmtBRL(inp.toll)}) × ${plural(days, "dia", "dias")} × ${plural(persons, "pessoa", "pessoas")}`);
-  const alimentacao = calc.add("alimentacao", "Alimentação", days.mul(persons).mul(dec(g.alimentacaoPessoaDia)),
-    `${plural(days, "dia", "dias")} × ${plural(persons, "pessoa", "pessoas")} × ${fmtBRL(g.alimentacaoPessoaDia)}`);
+  const alimentacao = calc.add("alimentacao", "Alimentação", days.mul(persons).mul(meal),
+    `${plural(days, "dia", "dias")} × ${plural(persons, "pessoa", "pessoas")} × ${fmtBRL(meal)}${mealTag}`);
   const hospedagem = calc.add("hospedagem", "Hospedagem",
-    inp.lodging ? days.mul(persons).mul(dec(g.hospedagemPessoaDia)) : dec(0),
-    inp.lodging ? `${plural(days, "dia", "dias")} × ${plural(persons, "pessoa", "pessoas")} × ${fmtBRL(g.hospedagemPessoaDia)}` : "Sem hospedagem");
+    inp.lodging ? days.mul(persons).mul(lodgingDay) : dec(0),
+    inp.lodging ? `${plural(days, "dia", "dias")} × ${plural(persons, "pessoa", "pessoas")} × ${fmtBRL(lodgingDay)}${lodgingTag}` : "Sem hospedagem");
   const rateio = calc.add("rateioFixo", "Rateio custo fixo", days.mul(derived(p).custoFixoDia),
     `${plural(days, "dia", "dias")} × ${fmtBRL(derived(p).custoFixoDia)}/dia (${fmtBRL(g.custoFixoMensal)} ÷ ${fmtN(g.diasProdutivosMes)} dias)`);
 
@@ -108,7 +117,43 @@ export function commonBlock(
   if (days.gt(120)) calc.warn("DIAS_ALTOS", `Operação longa: ${fmtN(days)} dias estimados.`, "confirm");
   if (inp.auxiliaries > 30) calc.warn("EQUIPE_GRANDE", `Equipe muito grande (${inp.auxiliaries} auxiliares).`, "confirm");
 
-  return { n, prod, baseDays, extraDays, days, technicians, techCharged, persons, tecnico, auxiliares, deslocamento, alimentacao, hospedagem, rateio };
+  return { n, prod, baseDays, extraDays, days, technicians, techCharged, persons, tecnico, auxiliares, deslocamento, alimentacao, hospedagem, rateio, meal, lodgingDay };
+}
+
+/** Caçamba: quantidade e preço unitário podem ser informados (valores regionais); senão, regra de árvores por caçamba. */
+export function cacambaBlock(p: PricingParams, inp: FieldOperationInputs, calc: Calc, arvoresPor: DecimalT) {
+  if (!inp.cacamba) {
+    calc.add("cacamba", "Caçamba", dec(0), "Não utiliza caçamba");
+    return { cost: dec(0), qty: 0 };
+  }
+  const informedQty = inp.cacambaQty !== null && inp.cacambaQty !== undefined;
+  const informedPrice = inp.cacambaUnitPrice !== null && inp.cacambaUnitPrice !== undefined;
+  if (arvoresPor.lte(0) && !informedQty) throw new EngineError("Árvores por caçamba deve ser maior que zero.");
+  const qty = informedQty ? dec(inp.cacambaQty!) : ceil(dec(inp.trees).div(arvoresPor));
+  const unit = informedPrice ? dec(inp.cacambaUnitPrice!) : dec(p.general.cacamba);
+  const cost = calc.add("cacamba", "Caçamba", qty.mul(unit),
+    `${informedQty ? `${fmtN(qty)} caçamba(s) informada(s)` : `⌈${inp.trees} ÷ ${fmtN(arvoresPor)}⌉ = ${fmtN(qty)} caçamba(s)`} × ${fmtBRL(unit)}${informedPrice ? " (preço regional)" : ""}`);
+  return { cost, qty: qty.toNumber() };
+}
+
+/**
+ * Acompanhamento técnico (poda/supressão): diária do profissional + alimentação, hospedagem (se houver) e transporte
+ * pelos dias de presença. Fora dos fatores de dificuldade (custo por dia de presença).
+ */
+export function supervisionBlock(p: PricingParams, inp: FieldOperationInputs, calc: Calc, c: ReturnType<typeof commonBlock>) {
+  if (!inp.supervision) return { total: dec(0), days: 0 };
+  const informed = inp.supervisionDays !== null && inp.supervisionDays !== undefined;
+  const d = informed ? dec(inp.supervisionDays!) : c.days;
+  const daily = dec(p.general.supervisaoDia);
+  const dd = plural(d, "dia", "dias");
+  const diaria = calc.add("supervisao", "Acompanhamento técnico — diária", d.mul(daily), `${dd}${informed ? " (informado)" : " (dias da operação)"} × ${fmtBRL(daily)}`);
+  const alim = calc.add("supervisaoAlimentacao", "Acompanhamento técnico — alimentação", d.mul(c.meal), `${dd} × ${fmtBRL(c.meal)}`);
+  const hosp = calc.add("supervisaoHospedagem", "Acompanhamento técnico — hospedagem", inp.lodging ? d.mul(c.lodgingDay) : dec(0),
+    inp.lodging ? `${dd} × ${fmtBRL(c.lodgingDay)}` : "Sem hospedagem");
+  const transp = calc.add("supervisaoTransporte", "Acompanhamento técnico — transporte",
+    dec(inp.distanceKm).mul(dec(p.general.custoKm)).plus(dec(inp.toll)).mul(d),
+    `(${fmtN(inp.distanceKm)} km × ${fmtBRL(p.general.custoKm)} + pedágio ${fmtBRL(inp.toll)}) × ${dd}`);
+  return { total: diaria.plus(alim).plus(hosp).plus(transp), days: d.toNumber() };
 }
 
 /** Produto dos modificadores ligados. No motor v1 só entram os que a planilha multiplica. */
@@ -161,6 +206,7 @@ export function buildResult(args: {
   common: ReturnType<typeof commonBlock>; costs: Record<string, DecimalT>; baseCost: DecimalT;
   serviceTypeFactor?: DecimalT; mods?: ReturnType<typeof modifiersBlock>; afterModifiers: DecimalT;
   operational: DecimalT; price: ReturnType<typeof priceBlock>; method: "STANDARD" | "LEGACY_PODA"; auxiliaries: number;
+  details?: Record<string, string | number | null>;
 }): CalcResult {
   const { common: c, price } = args;
   return {
@@ -190,6 +236,7 @@ export function buildResult(args: {
     unitPriceRounded: s(money(price.unit)),
     effectiveMargin: s(price.effectiveMargin),
     priceMethod: args.method,
+    details: args.details ?? {},
     components: args.calc.components,
     warnings: args.calc.warnings,
   };

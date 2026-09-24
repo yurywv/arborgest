@@ -6,7 +6,8 @@ import clsx from "clsx";
 import { AlertTriangle, Loader2, Plus, Trash2 } from "lucide-react";
 import { dec, fmtBRL } from "@/lib/pricing/decimal";
 import { diffParams, paramsSchema } from "@/lib/pricing/params-schema";
-import { DIFFICULTY_LABEL, type Difficulty, type ModifierDef, type PricingParams } from "@/lib/pricing/types";
+import { DIFFICULTIES, DIFFICULTY_LABEL, type Difficulty, type ModifierDef, type PricingParams } from "@/lib/pricing/types";
+import { normalizeParams } from "@/lib/pricing/defaults";
 import { publishParams } from "./actions";
 
 type Svc = "SUPRESSAO" | "PODA";
@@ -15,7 +16,8 @@ const toPct = (f: string) => { try { return dec(f).mul(100).toDecimalPlaces(4).t
 const fromPct = (p: string) => { const t = p.trim().replace(",", "."); if (t === "" || Number.isNaN(Number(t))) return p; return dec(t).div(100).toString(); };
 const norm = (v: string) => v.trim().replace(",", ".");
 
-export function ParamsEditor({ initial, versionLabel, v2Validated }: { initial: PricingParams; versionLabel: string; v2Validated: boolean }) {
+export function ParamsEditor({ initial: rawInitial, versionLabel, v2Validated }: { initial: PricingParams; versionLabel: string; v2Validated: boolean }) {
+  const initial = useMemo(() => normalizeParams(rawInitial), [rawInitial]);
   const [p, setP] = useState<PricingParams>(() => structuredClone(initial));
   const [desc, setDesc] = useState("");
   const [v2ok, setV2ok] = useState(false);
@@ -111,6 +113,7 @@ export function ParamsEditor({ initial, versionLabel, v2Validated }: { initial: 
         {money("combustivelLitro", "Combustível motosserra", "R$/L")}
         {money("cacamba", "Custo caçamba")}
         {money("horasDia", "Horas por dia padrão", "h")}
+        {money("supervisaoDia", "Diária do acompanhamento técnico (poda/supressão)")}
         <div className="rounded-xl bg-stone-50 p-3 text-sm sm:col-span-2">
           <b>Calculados automaticamente:</b>{" "}
           {derived ? <>custo fixo/dia {fmtBRL(derived.fixoDia)} · custo hora técnico {fmtBRL(derived.horaTec)} · custo hora auxiliar {fmtBRL(derived.horaAux)}</> : "valores inválidos"}
@@ -129,22 +132,42 @@ export function ParamsEditor({ initial, versionLabel, v2Validated }: { initial: 
         </label>
       </Section>
 
-      <Section title="Produtividade (árvores/dia)">
+      <Section title="Produtividade (árvores/dia)" description="Deixe &quot;Muito difícil&quot; em branco para não oferecer o 4º nível no serviço.">
         <div className="overflow-x-auto sm:col-span-2">
           <table className="table">
-            <thead><tr><th>Serviço</th>{([1, 2, 3] as Difficulty[]).map((d) => <th key={d}>{DIFFICULTY_LABEL[d]}</th>)}</tr></thead>
+            <thead><tr><th>Serviço</th>{DIFFICULTIES.map((d) => <th key={d}>{DIFFICULTY_LABEL[d]}</th>)}</tr></thead>
             <tbody>
               {(["INVENTARIO", "SUPRESSAO", "PODA"] as const).map((s) => (
                 <tr key={s}>
                   <td className="font-medium">{s === "INVENTARIO" ? "Inventário" : s === "SUPRESSAO" ? "Supressão" : "Poda"}</td>
-                  {([1, 2, 3] as Difficulty[]).map((d) => (
-                    <td key={d}><input aria-label={`${s} ${DIFFICULTY_LABEL[d]}`} className="input min-h-9 w-24 py-1" inputMode="decimal" value={p.services[s].productivity[d]}
-                      onChange={(e) => upd((x) => { x.services[s].productivity[d] = norm(e.target.value); })} /></td>
+                  {DIFFICULTIES.map((d) => (
+                    <td key={d}>
+                      {s === "INVENTARIO" && d === 4 ? <span className="text-stone-400">—</span> : (
+                        <input aria-label={`${s} ${DIFFICULTY_LABEL[d]}`} className="input min-h-9 w-24 py-1" inputMode="decimal" value={p.services[s].productivity[d] ?? ""}
+                          placeholder={d === 4 ? "não usado" : ""}
+                          onChange={(e) => upd((x) => {
+                            const v = norm(e.target.value);
+                            if (d === 4 && v === "") delete x.services[s].productivity[4];
+                            else x.services[s].productivity[d] = v;
+                          })} />
+                      )}
+                    </td>
                   ))}
                 </tr>
               ))}
             </tbody>
           </table>
+        </div>
+        <div className="sm:col-span-2">
+          <p className="mb-1 text-sm font-medium">Descrição dos níveis da supressão (altura / local)</p>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {DIFFICULTIES.filter((d) => p.services.SUPRESSAO.productivity[d]).map((d) => (
+              <label key={d} className="block text-xs"><span className="mb-0.5 block text-stone-500">{DIFFICULTY_LABEL[d]}</span>
+                <input className="input min-h-9 py-1" value={p.services.SUPRESSAO.difficultyHints?.[d] ?? ""}
+                  onChange={(e) => upd((x) => { x.services.SUPRESSAO.difficultyHints = { ...x.services.SUPRESSAO.difficultyHints, [d]: e.target.value }; })} />
+              </label>
+            ))}
+          </div>
         </div>
       </Section>
 
@@ -159,11 +182,15 @@ export function ParamsEditor({ initial, versionLabel, v2Validated }: { initial: 
           ))}
         </div>
         <TierTable svc="SUPRESSAO" p={p} upd={upd} />
-        {([1, 2, 3] as Difficulty[]).map((d) => num(`Árvores por caçamba — ${DIFFICULTY_LABEL[d]}`, p.services.SUPRESSAO.cacambaArvoresPor![d], (v) => upd((x) => { x.services.SUPRESSAO.cacambaArvoresPor![d] = norm(v); }), "árv."))}
-        {num("Unidades compensatórias por árvore", p.services.SUPRESSAO.compensacao!.unidadesPorArvore, (v) => upd((x) => { x.services.SUPRESSAO.compensacao!.unidadesPorArvore = norm(v); }), "un.")}
-        {num("Valor por unidade compensatória", p.services.SUPRESSAO.compensacao!.valorUnidade, (v) => upd((x) => { x.services.SUPRESSAO.compensacao!.valorUnidade = norm(v); }), "R$")}
+        {DIFFICULTIES.filter((d) => p.services.SUPRESSAO.productivity[d]).map((d: Difficulty) => num(`Árvores por caçamba — ${DIFFICULTY_LABEL[d]}`, p.services.SUPRESSAO.cacambaArvoresPor?.[d] ?? "10", (v) => upd((x) => { x.services.SUPRESSAO.cacambaArvoresPor = { ...x.services.SUPRESSAO.cacambaArvoresPor, [d]: norm(v) }; }), "árv."))}
+        {num("Mudas por árvore suprimida (padrão)", p.services.SUPRESSAO.compensacao!.unidadesPorArvore, (v) => upd((x) => { x.services.SUPRESSAO.compensacao!.unidadesPorArvore = norm(v); }), "un.")}
+        {num("Valor por muda", p.services.SUPRESSAO.compensacao!.valorUnidade, (v) => upd((x) => { x.services.SUPRESSAO.compensacao!.valorUnidade = norm(v); }), "R$")}
         {num("Custo fixo da compensação", p.services.SUPRESSAO.compensacao!.custoFixo, (v) => upd((x) => { x.services.SUPRESSAO.compensacao!.custoFixo = norm(v); }), "R$",
-          "Compensação = árvores × unidades × valor + custo fixo (planilha: 15 × 15 + 400).")}
+          "Compensação = mudas × valor por muda + custo fixo. Mudas = quantidade da lei municipal informada no item ou árvores × mudas por árvore (planilha: 15 × 15 + 400).")}
+        {num("Tarifa de frete", p.services.SUPRESSAO.frete!.tarifaTonKm, (v) => upd((x) => { x.services.SUPRESSAO.frete!.tarifaTonKm = norm(v); }), "R$/t·km",
+          "Frete calculado = distância × peso (t) × tarifa. O item também aceita o valor do frete por cidade.")}
+        {num("Frete mínimo", p.services.SUPRESSAO.frete!.valorMinimo, (v) => upd((x) => { x.services.SUPRESSAO.frete!.valorMinimo = norm(v); }), "R$")}
+        {num("Peso médio por muda", p.services.SUPRESSAO.frete!.pesoPorMudaKg, (v) => upd((x) => { x.services.SUPRESSAO.frete!.pesoPorMudaKg = norm(v); }), "kg")}
       </Section>
 
       <Section title="Poda — tipos, fatores, caçamba e licenciamento">

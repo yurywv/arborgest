@@ -6,13 +6,14 @@ import { clientIp, type CurrentUser } from "@/lib/auth/session";
 import { nextCounter } from "@/lib/counters";
 import { calculate } from "./registry";
 import { ensurePricingSetup } from "./store-core";
+import { normalizeParams } from "./defaults";
 import type { PricingParams, ServiceCode } from "./types";
 
 type Tx = Prisma.TransactionClient;
 
 export { ENGINE_BUILD } from "./estimate-core";
 
-export const paramsOf = (v: Pick<PricingParameterVersion, "snapshot">) => v.snapshot as unknown as PricingParams;
+export const paramsOf = (v: Pick<PricingParameterVersion, "snapshot">) => normalizeParams(v.snapshot as unknown as PricingParams);
 
 /** Versão de parâmetros vigente (cria a inicial se o banco ainda não tiver nenhuma). */
 export const getActiveVersion = cache(async () => {

@@ -10,8 +10,9 @@ import { ENGINE_LABEL } from "@/lib/pricing/types";
 import { ActionButton } from "@/components/form";
 import { Badge, Card, LinkButton, PageHeader, TabLinks } from "@/components/ui";
 import { ParamsEditor } from "./params-editor";
-import { ProposalTextsForm } from "./forms";
-import { toggleService } from "./actions";
+import { CompensationRuleForm, EditCompensationRule, ProposalTextsForm } from "./forms";
+import { toggleCompensationRule, toggleService } from "./actions";
+import { fmtBRL, fmtN } from "@/lib/pricing/decimal";
 
 export const metadata = { title: "Parâmetros de precificação" };
 
@@ -28,7 +29,7 @@ export default async function PricingAdminPage({ searchParams }: { searchParams:
       />
       <TabLinks active={aba} baseHref="/admin/precificacao" tabs={[
         { key: "parametros", label: "Parâmetros gerais" }, { key: "versoes", label: "Versões" },
-        { key: "textos", label: "Textos da proposta" }, { key: "servicos", label: "Serviços" },
+        { key: "compensacao", label: "Compensação municipal" }, { key: "textos", label: "Textos da proposta" }, { key: "servicos", label: "Serviços" },
       ]} />
       {aba === "parametros" && (
         <ParamsEditor initial={paramsOf(active)} versionLabel={active.label}
@@ -37,6 +38,7 @@ export default async function PricingAdminPage({ searchParams }: { searchParams:
       {aba === "versoes" && <Versions />}
       {aba === "textos" && <div className="max-w-3xl"><ProposalTextsForm values={await getProposalTexts()} /></div>}
       {aba === "servicos" && <Services />}
+      {aba === "compensacao" && <CompensationRules />}
     </>
   );
 }
@@ -90,5 +92,37 @@ async function Services() {
         Novos serviços (plantio, transplante, laudos…) são adicionados como módulos do Pricing Engine — veja <Link className="link" href="/admin/precificacao/validacao#arquitetura">arquitetura</Link> e <code>src/lib/pricing/registry.ts</code>.
       </p>
     </Card>
+  );
+}
+
+async function CompensationRules() {
+  const rules = await db.compensationRule.findMany({ orderBy: [{ active: "desc" }, { state: "asc" }, { city: "asc" }] });
+  const row = (r: (typeof rules)[number]) => ({
+    id: r.id, city: r.city, state: r.state, lawReference: r.lawReference, seedlingsPerTree: r.seedlingsPerTree.toString(),
+    freightValue: r.freightValue?.toString() ?? null, notes: r.notes,
+  });
+  return (
+    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_380px]">
+      <Card title="Leis municipais de compensação ambiental" bodyClassName="p-0">
+        {rules.length === 0 ? <p className="p-4 text-sm text-stone-500">Nenhuma lei cadastrada. Cadastre as leis dos municípios atendidos para sugerir a quantidade de mudas na supressão.</p> : (
+          <ul className="divide-y divide-stone-100">
+            {rules.map((r) => (
+              <li key={r.id} className="p-4">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <b>{r.city}/{r.state}</b> {!r.active && <Badge>Inativa</Badge>}
+                    <p className="text-sm">{r.lawReference}</p>
+                    <p className="text-xs text-stone-500">{fmtN(r.seedlingsPerTree.toString())} muda(s) por árvore suprimida{r.freightValue ? ` · frete ${fmtBRL(r.freightValue.toString())}` : ""}{r.notes ? ` · ${r.notes}` : ""}</p>
+                  </div>
+                  <ActionButton size="sm" action={toggleCompensationRule.bind(null, r.id, !r.active)}>{r.active ? "Desativar" : "Ativar"}</ActionButton>
+                </div>
+                <EditCompensationRule rule={row(r)} />
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+      <Card title="Nova lei municipal"><CompensationRuleForm /></Card>
+    </div>
   );
 }

@@ -7,7 +7,7 @@
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { DEFAULT_ROLES, PERMISSION_MIGRATIONS } from "../src/lib/auth/permissions";
-import { ensurePricingSetup } from "../src/lib/pricing/store-core";
+import { applyPricingParamMigrations, ensurePricingSetup } from "../src/lib/pricing/store-core";
 import { speciesCatalogData } from "./data/species-catalog";
 
 const db = new PrismaClient();
@@ -39,6 +39,7 @@ async function main() {
 
   const pricing = await ensurePricingSetup(db);
   console.log(pricing.created ? "✓ precificação: versão 1.0 (legado Excel) criada" : "✓ precificação: parâmetros existentes mantidos");
+  for (const m of await applyPricingParamMigrations(db)) console.log(`✓ precificação: ajuste de parâmetros aplicado (${m})`);
 
   const catalog = speciesCatalogData();
   const { count } = await db.species.createMany({ data: catalog, skipDuplicates: true });

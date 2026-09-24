@@ -7,7 +7,8 @@ import { finish, formObject, optDate, optId, optStr, reqStr, runAction, UserErro
 import type { ActionState } from "@/lib/action-state";
 import { dec, money } from "@/lib/pricing/decimal";
 import { SERVICES } from "@/lib/pricing/registry";
-import { nextProposalNumber, paramsOf, pricingAudit } from "@/lib/pricing/server";
+import { calcResultOf, nextProposalNumber, paramsOf, pricingAudit } from "@/lib/pricing/server";
+import { proposalExtras } from "@/lib/pricing/proposal-extras";
 import { renderProposalPdf } from "@/lib/pricing/proposal-data";
 import { mailConfigured, mailLayout, sendMail } from "@/lib/mail";
 import { getSettings } from "@/lib/settings";
@@ -36,7 +37,7 @@ export async function createProposal(estimateId: string, _: ActionState, fd: For
     const d = schema.parse(formObject(fd));
     const est = await db.pricingEstimate.findUniqueOrThrow({
       where: { id: estimateId },
-      include: { items: { orderBy: { order: "asc" } }, parameterVersion: true, proposals: { select: { id: true, version: true, status: true } } },
+      include: { items: { orderBy: { order: "asc" }, include: { currentCalculation: { select: { snapshot: true } } } }, parameterVersion: true, proposals: { select: { id: true, version: true, status: true } } },
     });
     if (!est.items.length) throw new UserError("O orçamento não tem itens.");
     const flow = paramsOf(est.parameterVersion).approval.fluxoObrigatorio;
@@ -59,8 +60,10 @@ export async function createProposal(estimateId: string, _: ActionState, fd: For
             create: est.items.map((i, idx) => {
               const svc = SERVICES[i.serviceCode as keyof typeof SERVICES];
               const total = dec(i.negotiatedPrice.toString());
+              const extras = proposalExtras(i.currentCalculation ? calcResultOf(i.currentCalculation) : null, i.inputs as Record<string, unknown>);
               return {
-                order: idx, serviceCode: i.serviceCode, title: svc?.name ?? i.serviceCode, description: i.description, quantity: i.quantity,
+                order: idx, serviceCode: i.serviceCode, title: svc?.name ?? i.serviceCode,
+                description: [i.description, ...extras].filter(Boolean).join("\n") || null, quantity: i.quantity,
                 unit: svc?.unit ?? "un", unitPrice: money(total.div(i.quantity || 1)).toString(), total: total.toString(), estimateItemId: i.id,
               };
             }),

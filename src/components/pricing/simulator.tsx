@@ -12,28 +12,35 @@ import { fmtBRL, fmtN, fmtPct } from "@/lib/pricing/decimal";
 import { toPureLegacy, toV2 } from "@/lib/pricing/defaults";
 import { adjustedItemPrice } from "@/lib/pricing/policy";
 import type { CalcResult, Difficulty, PricingParams, ServiceCode } from "@/lib/pricing/types";
-import { DIFFICULTY_LABEL } from "@/lib/pricing/types";
+import { DIFFICULTIES, DIFFICULTY_LABEL } from "@/lib/pricing/types";
 import { TreePicker, type PickerTree } from "./tree-picker";
 
 type Values = Record<string, string | boolean | string[]>;
 
 function toValues(inputs: Record<string, unknown>): Values {
-  return Object.fromEntries(Object.entries(inputs).map(([k, v]) => [k, typeof v === "number" ? String(v) : (v as string | boolean | string[])]));
+  return Object.fromEntries(Object.entries(inputs).map(([k, v]) => [k, v === null || v === undefined ? "" : typeof v === "number" ? String(v) : (v as string | boolean | string[])]));
 }
-function toInputs(v: Values): Record<string, unknown> {
+/** Converte o formulário em entradas do motor. Campos numéricos opcionais vazios viram null (= padrão dos parâmetros). */
+function toInputs(v: Values, service: ServiceCode): Record<string, unknown> {
+  const fields = new Map(SERVICES[service].fields.map((f) => [f.key, f]));
   // Aceita "12,5", "1.234,50" e "12.5".
-  const num = (x: unknown) => {
-    if (typeof x !== "string") return x;
+  const num = (x: string, optional: boolean) => {
     const t = x.trim();
-    if (t === "") return 0;
+    if (t === "") return optional ? null : 0;
     return Number(t.includes(",") ? t.replace(/\./g, "").replace(",", ".") : t);
   };
-  return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, typeof x === "string" && k !== "description" ? num(x) : x]));
+  return Object.fromEntries(Object.entries(v).map(([k, x]) => {
+    const f = fields.get(k);
+    if (typeof x !== "string" || !f) return [k, x];
+    if (f.kind === "text") return [k, x.trim() === "" ? null : x];
+    if (f.kind === "select") return [k, x];
+    return [k, num(x, !!f.optional)];
+  }));
 }
 
 function tryCalc(service: ServiceCode, values: Values, params: PricingParams): { result?: CalcResult; error?: string } {
   try {
-    return { result: calculate(service, toInputs(values), params).result };
+    return { result: calculate(service, toInputs(values, service), params).result };
   } catch (e) {
     const issues = (e as { issues?: { message: string }[] }).issues;
     return { error: issues?.[0]?.message ?? (e as Error).message };
@@ -56,7 +63,11 @@ export type SimulatorProps = {
   saveLabel?: string;
   /** Margem de lucro definida no orçamento (fração) — mostra o preço que irá para a proposta. */
   estimateMargin?: string | null;
+  /** Leis municipais de compensação ambiental cadastradas. */
+  compensationRules?: CompensationRuleOption[];
 };
+
+export type CompensationRuleOption = { id: string; city: string; state: string; lawReference: string; seedlingsPerTree: string; freightValue: string | null };
 
 export function PricingSimulator(props: SimulatorProps) {
   const { params, canSeeCosts } = props;
@@ -86,23 +97,41 @@ export function PricingSimulator(props: SimulatorProps) {
   };
   const changeService = (s: ServiceCode) => {
     setService(s);
-    setValues((cur) => toValues({ ...SERVICES[s].defaults, ...Object.fromEntries(Object.entries(toInputs(cur)).filter(([k]) => k in SERVICES[s].defaults)) }));
+    setValues((cur) => toValues({ ...SERVICES[s].defaults, ...Object.fromEntries(Object.entries(toInputs(cur, service)).filter(([k]) => k in SERVICES[s].defaults && k !== "difficulty")) }));
   };
 
   const confirmWarnings = result?.warnings.filter((w) => w.level === "confirm") ?? [];
   const sections: { key: FieldDef["section"]; title: string }[] = [
     { key: "QUANTIDADE", title: "Quantidade" },
     { key: "LOGISTICA", title: "Logística" },
+    { key: "REGIONAL", title: "Valores regionais" },
     { key: "OPERACAO", title: "Operação" },
     { key: "SERVICO", title: def.name },
+    { key: "COMPENSACAO", title: "Compensação ambiental" },
+    { key: "FRETE", title: "Frete (mudas e materiais)" },
+    { key: "ACOMPANHAMENTO", title: "Acompanhamento técnico" },
     { key: "MODIFICADORES", title: "Modificadores" },
   ];
+  const visible = (f: FieldDef) => !f.showIf || values[f.showIf.key] === f.showIf.equals || String(values[f.showIf.key]) === String(f.showIf.equals);
+  /** Lei municipal escolhida: preenche município, citação, mudas (árvores × mudas/árvore) e frete da cidade. */
+  const applyRule = (id: string) => {
+    const r = props.compensationRules?.find((x) => x.id === id);
+    if (!r) return;
+    const trees = Number(effective.trees) || 0;
+    setValues((cur) => ({
+      ...cur,
+      compensationCity: `${r.city}/${r.state}`,
+      compensationLaw: r.lawReference,
+      seedlings: String(Math.ceil(trees * Number(r.seedlingsPerTree))),
+      ...(r.freightValue && (cur.freightMode === "NONE" || !cur.freightMode) ? { freightMode: "FIXED", freightValue: r.freightValue } : {}),
+    }));
+  };
 
   async function save() {
     if (!props.onSave || !result) return;
     start(async () => {
       const r = await props.onSave!({
-        service, inputs: toInputs(effective), description, treeIds: useTrees ? treeIds : [], confirmWarnings: confirm, clientPrice: result.finalPriceRounded,
+        service, inputs: toInputs(effective, service), description, treeIds: useTrees ? treeIds : [], confirmWarnings: confirm, clientPrice: result.finalPriceRounded,
       });
       if (r && !r.ok) setServerMsg({ ok: false, text: r.message ?? "Falha ao salvar." });
     });
@@ -130,7 +159,7 @@ export function PricingSimulator(props: SimulatorProps) {
         </section>
 
         {sections.map((sec) => {
-          const fields = def.fields.filter((f) => f.section === sec.key);
+          const fields = def.fields.filter((f) => f.section === sec.key && visible(f));
           if (!fields.length) return null;
           return (
             <section key={sec.key} className="card card-body">
@@ -147,7 +176,7 @@ export function PricingSimulator(props: SimulatorProps) {
                 <TreePicker trees={props.trees} selected={treeIds} onChange={setTreeIds} />
               ) : (
                 <div className={clsx("grid gap-4", sec.key !== "MODIFICADORES" && "sm:grid-cols-2")}>
-                  {fields.map((f) => <FieldInput key={f.key} f={f} values={values} set={set} params={params} service={service} />)}
+                  {fields.map((f) => <FieldInput key={f.key} f={f} values={values} set={set} params={params} service={service} rules={props.compensationRules} applyRule={applyRule} />)}
                 </div>
               )}
             </section>
@@ -255,29 +284,68 @@ function Stat({ k, v }: { k: string; v: React.ReactNode }) {
   );
 }
 
-function FieldInput({ f, values, set, params, service }: { f: FieldDef; values: Values; set: (k: string, v: string | boolean | string[]) => void; params: PricingParams; service: ServiceCode }) {
+function FieldInput({ f, values, set, params, service, rules, applyRule }: {
+  f: FieldDef; values: Values; set: (k: string, v: string | boolean | string[]) => void; params: PricingParams; service: ServiceCode;
+  rules?: CompensationRuleOption[]; applyRule: (id: string) => void;
+}) {
   const id = `sim-${f.key}`;
   const v = values[f.key];
   if (f.kind === "bool")
     return (
       <label className="flex min-h-11 cursor-pointer items-center justify-between gap-3 rounded-xl border border-stone-200 bg-white px-3 py-2 has-checked:border-brand-400 has-checked:bg-brand-50">
-        <span className="text-sm font-medium text-stone-800">{f.label}</span>
-        <input id={id} type="checkbox" className="size-5 accent-brand-600" checked={!!v} onChange={(e) => set(f.key, e.target.checked)} />
+        <span className="text-sm">
+          <span className="font-medium text-stone-800">{f.label}</span>
+          {f.hint && <span className="block text-xs text-stone-500">{f.hint}</span>}
+        </span>
+        <input id={id} type="checkbox" className="size-5 shrink-0 accent-brand-600" checked={!!v} onChange={(e) => set(f.key, e.target.checked)} />
       </label>
     );
-  if (f.kind === "difficulty")
+  if (f.kind === "difficulty") {
+    const sp = params.services[service];
+    const levels = DIFFICULTIES.filter((d) => sp.productivity[d]);
+    const hint = sp.difficultyHints?.[Number(v) as Difficulty];
     return (
-      <div>
+      <div className="sm:col-span-2">
         <span className="label">{f.label}</span>
-        <div className="grid grid-cols-3 gap-1.5" role="radiogroup" aria-label={f.label}>
-          {([1, 2, 3] as Difficulty[]).map((d) => (
-            <button key={d} type="button" role="radio" aria-checked={String(v) === String(d)}
-              className={clsx("btn btn-sm", String(v) === String(d) ? "btn-primary" : "btn-secondary")} onClick={() => set(f.key, String(d))}>
+        <div className={clsx("grid gap-1.5", levels.length === 4 ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3")} role="radiogroup" aria-label={f.label}>
+          {levels.map((d) => (
+            <button key={d} type="button" role="radio" aria-checked={String(v) === String(d)} title={sp.difficultyHints?.[d]}
+              className={clsx("btn btn-sm h-auto flex-col py-1.5", String(v) === String(d) ? "btn-primary" : "btn-secondary")} onClick={() => set(f.key, String(d))}>
               {DIFFICULTY_LABEL[d]}
-              <span className="text-[10px] opacity-80">{fmtN(params.services[service].productivity[d])}/d</span>
+              <span className="text-[10px] font-normal opacity-80">{fmtN(sp.productivity[d]!)} árv./dia</span>
             </button>
           ))}
         </div>
+        {hint && <p className="mt-1 text-xs text-stone-500">{hint}</p>}
+      </div>
+    );
+  }
+  if (f.kind === "select")
+    return (
+      <div>
+        <label className="label" htmlFor={id}>{f.label}</label>
+        <select id={id} className="input" value={String(v ?? "")} onChange={(e) => set(f.key, e.target.value)}>
+          {(f.options ?? []).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+      </div>
+    );
+  if (f.kind === "compensationRule")
+    return (
+      <div className="sm:col-span-2">
+        <label className="label" htmlFor={id}>{f.label}</label>
+        <select id={id} className="input" value="" onChange={(e) => applyRule(e.target.value)} disabled={!rules?.length}>
+          <option value="">{rules?.length ? "Preencher a partir de uma lei cadastrada…" : "Nenhuma lei municipal cadastrada (Administração › Parâmetros de preço)"}</option>
+          {(rules ?? []).map((r) => <option key={r.id} value={r.id}>{r.city}/{r.state} — {r.lawReference} ({fmtN(r.seedlingsPerTree)} mudas/árvore)</option>)}
+        </select>
+        <p className="mt-1 text-xs text-stone-500">Preenche município, lei, mudas (árvores × mudas por árvore) e frete da cidade. Os campos continuam editáveis.</p>
+      </div>
+    );
+  if (f.kind === "text")
+    return (
+      <div className={clsx(f.key === "compensationLaw" && "sm:col-span-2")}>
+        <label className="label" htmlFor={id}>{f.label}</label>
+        <input id={id} className="input" value={String(v ?? "")} maxLength={300} onChange={(e) => set(f.key, e.target.value)} />
+        {f.hint && <p className="mt-1 text-xs text-stone-500">{f.hint}</p>}
       </div>
     );
   if (f.kind === "serviceType")
@@ -314,9 +382,10 @@ function FieldInput({ f, values, set, params, service }: { f: FieldDef; values: 
       <label className="label" htmlFor={id}>{f.label}</label>
       <div className="relative">
         <input id={id} className={clsx("input", f.suffix && "pr-12")} inputMode={f.kind === "int" ? "numeric" : "decimal"} autoComplete="off"
-          value={String(v ?? "")} onChange={(e) => set(f.key, e.target.value)} />
+          placeholder={f.placeholder?.(params)} value={String(v ?? "")} onChange={(e) => set(f.key, e.target.value)} />
         {f.suffix && <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-stone-400">{f.suffix}</span>}
       </div>
+      {f.hint && <p className="mt-1 text-xs text-stone-500">{f.hint}</p>}
     </div>
   );
 }

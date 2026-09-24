@@ -1115,3 +1115,21 @@ model PricingAuditLog {
   @@index([estimateId])
   @@index([createdAt])
 }
+
+/// Regras municipais de compensação ambiental (referência para a quantidade de mudas por árvore suprimida).
+/// A quantidade e a citação aplicadas ficam gravadas no item/snapshot do orçamento.
+model CompensationRule {
+  id               String   @id @default(cuid())
+  city             String
+  state            String   @db.Char(2)
+  lawReference     String
+  seedlingsPerTree Decimal  @db.Decimal(10, 2)
+  freightValue     Decimal? @db.Decimal(12, 2)
+  notes            String?
+  active           Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([city, state, lawReference])
+  @@index([state, city])
+}

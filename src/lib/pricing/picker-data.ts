@@ -31,3 +31,21 @@ export async function activeServices(): Promise<ServiceCode[]> {
   const codes = rows.map((r) => r.code).filter((c): c is ServiceCode => (SERVICE_CODES as string[]).includes(c));
   return codes.length ? codes : SERVICE_CODES;
 }
+
+/** Leis municipais de compensação ambiental ativas (para o simulador). */
+export async function compensationRuleOptions() {
+  const rows = await db.compensationRule.findMany({ where: { active: true }, orderBy: [{ state: "asc" }, { city: "asc" }] });
+  return rows.map((r) => ({
+    id: r.id, city: r.city, state: r.state, lawReference: r.lawReference,
+    seedlingsPerTree: r.seedlingsPerTree.toString(), freightValue: r.freightValue?.toString() ?? null,
+  }));
+}
+
+/** Valores regionais do projeto: reaproveita os informados no último item do orçamento. */
+export async function regionalDefaults(estimateId: string) {
+  const last = await db.pricingEstimateItem.findFirst({ where: { estimateId }, orderBy: { createdAt: "desc" }, select: { inputs: true } });
+  if (!last) return {};
+  const i = last.inputs as Record<string, unknown>;
+  const keys = ["distanceKm", "toll", "lodging", "mealCost", "lodgingCost", "cacambaUnitPrice"];
+  return Object.fromEntries(keys.filter((k) => i[k] !== undefined && i[k] !== null).map((k) => [k, i[k]]));
+}

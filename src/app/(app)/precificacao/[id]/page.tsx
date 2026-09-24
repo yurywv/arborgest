@@ -12,7 +12,8 @@ import { APPROVAL_LABEL, grantableLevel, levelCovers, type ApprovalLevelCode } f
 import { APPROVAL_STATUS, AUDIT_ACTION, ESTIMATE_STATUS, ESTIMATE_STATUS_TONE, OVERRIDE_TYPE, PROPOSAL_STATUS } from "@/lib/pricing/labels";
 import { SERVICES } from "@/lib/pricing/registry";
 import { ENGINE_LABEL, type ServiceCode } from "@/lib/pricing/types";
-import { EDITABLE_STATUSES, expireEstimates, getActiveVersion, paramsOf } from "@/lib/pricing/server";
+import { EDITABLE_STATUSES, calcResultOf, expireEstimates, getActiveVersion, paramsOf } from "@/lib/pricing/server";
+import { proposalExtras } from "@/lib/pricing/proposal-extras";
 import { estimateFormOptions } from "@/lib/pricing/options";
 import { getProposalTexts } from "@/lib/pricing/proposal-texts-server";
 import { ActionButton } from "@/components/form";
@@ -290,7 +291,12 @@ async function ProposalTab({ estimate: e, canWrite, canProposal }: {
 }) {
   const texts = await getProposalTexts();
   const contacts = await db.contact.findMany({ where: { clientId: e.clientId }, select: { id: true, name: true, email: true }, orderBy: { name: "asc" } });
-  const items = e.items.map((i) => ({ name: SERVICES[i.serviceCode as ServiceCode]?.name ?? i.serviceCode, qty: i.quantity, desc: i.description }));
+  const calcs = await db.pricingCalculation.findMany({ where: { id: { in: e.items.map((i) => i.currentCalculationId).filter((x): x is string => !!x) } }, select: { id: true, snapshot: true } });
+  const items = e.items.map((i) => {
+    const c = calcs.find((x) => x.id === i.currentCalculationId);
+    const extras = proposalExtras(c ? calcResultOf(c) : null, i.inputs as Record<string, unknown>);
+    return { name: SERVICES[i.serviceCode as ServiceCode]?.name ?? i.serviceCode, qty: i.quantity, desc: [i.description, ...extras].filter(Boolean).join(" ") };
+  });
   const draft = {
     title: e.title ? `Proposta — ${e.title}` : `Proposta de serviços arbóreos — ${e.client.tradeName ?? e.client.legalName}`,
     object: `Prestação de serviços de ${items.map((i) => `${i.name.toLowerCase()} (${i.qty} árvore${i.qty === 1 ? "" : "s"})`).join(", ")}${e.property ? ` em ${e.property.name}` : ""}.`,

@@ -10,52 +10,103 @@ import { calcInventario } from "./services/inventario";
 import { calcSupressao } from "./services/supressao";
 import { calcPoda } from "./services/poda";
 import { EngineError } from "./engine";
+import { normalizeParams } from "./defaults";
+import { fmtBRL, fmtN } from "./decimal";
 import type { CalcResult, PricingParams, ServiceCode, ServiceInputs } from "./types";
 
 const intMsg = (label: string) => ({ error: `${label}: informe um número inteiro.` });
 const nonNeg = (label: string, max: number) =>
   z.coerce.number({ error: `${label}: número inválido.` }).min(0, `${label} não pode ser negativo.`).max(max, `${label}: valor acima do limite (${max}).`);
 const nonNegInt = (label: string, max: number) => nonNeg(label, max).int(intMsg(label).error);
+/** Número opcional: vazio/ausente = null (usa o padrão dos parâmetros); nunca negativo. */
+const optNonNeg = (label: string, max: number, int = false) =>
+  z.preprocess(
+    (v) => (v === "" || v === undefined || v === null ? null : typeof v === "string" ? Number(v.replace(",", ".")) : v),
+    (int ? z.number({ error: `${label}: número inválido.` }).int(intMsg(label).error) : z.number({ error: `${label}: número inválido.` }))
+      .min(0, `${label} não pode ser negativo.`).max(max, `${label}: valor acima do limite (${max}).`).nullable(),
+  );
+const optText = (max: number) => z.preprocess((v) => (typeof v === "string" && v.trim() === "" ? null : v ?? null), z.string().trim().max(max).nullable());
 
 const base = {
   trees: nonNegInt("Número de árvores", 100_000),
   distanceKm: nonNeg("Distância", 20_000),
-  difficulty: z.coerce.number().int().min(1).max(3) as z.ZodType<1 | 2 | 3>,
+  difficulty: z.coerce.number().int().min(1).max(4) as z.ZodType<1 | 2 | 3 | 4>,
   auxiliaries: nonNegInt("Auxiliares", 200),
   lodging: z.boolean(),
   toll: nonNeg("Pedágio", 100_000),
+  mealCost: optNonNeg("Alimentação por pessoa/dia", 10_000).optional(),
+  lodgingCost: optNonNeg("Hospedagem por pessoa/dia", 10_000).optional(),
+};
+const fieldOp = {
+  serviceType: z.coerce.number().int(),
+  cacamba: z.boolean(),
+  cacambaQty: optNonNeg("Quantidade de caçambas", 10_000, true).optional(),
+  cacambaUnitPrice: optNonNeg("Preço unitário da caçamba", 1_000_000).optional(),
+  fuelLiters: nonNeg("Litros de combustível", 100_000),
+  modifiers: z.array(z.string().max(40)).max(30),
+  supervision: z.boolean().optional().default(false),
+  supervisionDays: optNonNeg("Dias de acompanhamento técnico", 1_000).optional(),
 };
 
 export const INPUT_SCHEMAS = {
   INVENTARIO: z.object(base),
   SUPRESSAO: z.object({
     ...base,
-    serviceType: z.coerce.number().int(),
+    ...fieldOp,
     compensation: z.boolean(),
-    cacamba: z.boolean(),
-    fuelLiters: nonNeg("Litros de combustível", 100_000),
-    modifiers: z.array(z.string().max(40)).max(30),
+    seedlings: optNonNeg("Mudas a plantar", 1_000_000, true).optional(),
+    seedlingUnitPrice: optNonNeg("Valor por muda", 100_000).optional(),
+    compensationLaw: optText(300).optional(),
+    compensationCity: optText(120).optional(),
+    freightMode: z.enum(["NONE", "FIXED", "CALC"]).optional().default("NONE"),
+    freightValue: optNonNeg("Valor do frete", 10_000_000).optional(),
+    freightDistanceKm: optNonNeg("Distância do frete", 20_000).optional(),
+    freightWeightKg: optNonNeg("Peso do frete", 10_000_000).optional(),
   }),
   PODA: z.object({
     ...base,
-    serviceType: z.coerce.number().int(),
+    ...fieldOp,
     license: z.boolean(),
-    cacamba: z.boolean(),
-    fuelLiters: nonNeg("Litros de combustível", 100_000),
-    modifiers: z.array(z.string().max(40)).max(30),
   }),
 } satisfies Record<ServiceCode, z.ZodType>;
 
-export type FieldKind = "int" | "decimal" | "money" | "bool" | "difficulty" | "serviceType" | "modifiers";
-export type FieldDef = { key: string; label: string; kind: FieldKind; section: "QUANTIDADE" | "LOGISTICA" | "OPERACAO" | "SERVICO" | "MODIFICADORES"; suffix?: string; hint?: string };
+export type FieldKind = "int" | "decimal" | "money" | "bool" | "text" | "select" | "difficulty" | "serviceType" | "modifiers" | "compensationRule";
+export type FieldSection = "QUANTIDADE" | "LOGISTICA" | "REGIONAL" | "OPERACAO" | "SERVICO" | "COMPENSACAO" | "FRETE" | "ACOMPANHAMENTO" | "MODIFICADORES";
+export type FieldDef = {
+  key: string; label: string; kind: FieldKind; section: FieldSection; suffix?: string; hint?: string;
+  /** Campo opcional: vazio = padrão dos parâmetros (mostrado como placeholder). */
+  optional?: boolean;
+  placeholder?: (p: PricingParams) => string;
+  /** Exibe só quando outro campo tem o valor indicado (ex.: cacamba = true). */
+  showIf?: { key: string; equals: unknown };
+  options?: { value: string; label: string }[];
+};
 
+const padrao = (v: string) => `Padrão ${fmtBRL(v)}`;
 const BASE_FIELDS: FieldDef[] = [
   { key: "trees", label: "Árvores", kind: "int", section: "QUANTIDADE" },
   { key: "distanceKm", label: "Distância ida + volta", kind: "decimal", section: "LOGISTICA", suffix: "km" },
   { key: "toll", label: "Pedágio (por dia/viagem)", kind: "money", section: "LOGISTICA", suffix: "R$" },
   { key: "lodging", label: "Hospedagem", kind: "bool", section: "LOGISTICA" },
+  { key: "mealCost", label: "Alimentação por pessoa/dia", kind: "money", section: "REGIONAL", suffix: "R$", optional: true,
+    placeholder: (p) => padrao(p.general.alimentacaoPessoaDia), hint: "Valor da região do projeto. Em branco = padrão." },
+  { key: "lodgingCost", label: "Hospedagem por pessoa/dia", kind: "money", section: "REGIONAL", suffix: "R$", optional: true,
+    placeholder: (p) => padrao(p.general.hospedagemPessoaDia), hint: "Usado quando há hospedagem." },
   { key: "difficulty", label: "Dificuldade", kind: "difficulty", section: "OPERACAO" },
   { key: "auxiliaries", label: "Auxiliares", kind: "int", section: "OPERACAO" },
+];
+const CACAMBA_FIELDS: FieldDef[] = [
+  { key: "cacamba", label: "Utiliza caçamba", kind: "bool", section: "SERVICO" },
+  { key: "cacambaQty", label: "Quantidade de caçambas", kind: "int", section: "SERVICO", optional: true, showIf: { key: "cacamba", equals: true },
+    placeholder: () => "Automático", hint: "Em branco = calculada pela regra de árvores por caçamba." },
+  { key: "cacambaUnitPrice", label: "Preço unitário da caçamba", kind: "money", section: "SERVICO", suffix: "R$", optional: true, showIf: { key: "cacamba", equals: true },
+    placeholder: (p) => padrao(p.general.cacamba), hint: "Varia conforme a região." },
+];
+const SUPERVISION_FIELDS: FieldDef[] = [
+  { key: "supervision", label: "Acompanhamento técnico", kind: "bool", section: "ACOMPANHAMENTO",
+    hint: "Profissional presente na operação: diária, alimentação, hospedagem e transporte." },
+  { key: "supervisionDays", label: "Dias de acompanhamento", kind: "decimal", section: "ACOMPANHAMENTO", optional: true, showIf: { key: "supervision", equals: true },
+    placeholder: () => "Dias da operação", hint: "Em branco = mesmos dias da operação." },
 ];
 
 export type ServiceDef = {
@@ -77,7 +128,7 @@ export const SERVICES: Record<ServiceCode, ServiceDef> = {
     code: "INVENTARIO", name: "Inventário arbóreo", shortName: "Inventário", unit: "árvore", osService: "INVENTARIO",
     description: "Cadastro georreferenciado com plaqueta e QR Code por exemplar.",
     fields: BASE_FIELDS,
-    defaults: { trees: 100, distanceKm: 0, difficulty: 2, auxiliaries: 1, lodging: false, toll: 0 },
+    defaults: { trees: 100, distanceKm: 0, difficulty: 2, auxiliaries: 1, lodging: false, toll: 0, mealCost: null, lodgingCost: null },
     calculate: calcInventario as ServiceDef["calculate"],
   },
   SUPRESSAO: {
@@ -87,12 +138,32 @@ export const SERVICES: Record<ServiceCode, ServiceDef> = {
     fields: [
       ...BASE_FIELDS,
       { key: "serviceType", label: "Tipo de serviço", kind: "serviceType", section: "SERVICO" },
-      { key: "compensation", label: "Compensação ambiental", kind: "bool", section: "SERVICO" },
-      { key: "cacamba", label: "Utiliza caçamba", kind: "bool", section: "SERVICO" },
+      ...CACAMBA_FIELDS,
       { key: "fuelLiters", label: "Combustível motosserra (total)", kind: "decimal", section: "SERVICO", suffix: "L" },
+      { key: "compensation", label: "Compensação ambiental", kind: "bool", section: "COMPENSACAO" },
+      { key: "compensationRule", label: "Lei municipal (cadastro)", kind: "compensationRule", section: "COMPENSACAO", showIf: { key: "compensation", equals: true } },
+      { key: "compensationCity", label: "Município", kind: "text", section: "COMPENSACAO", optional: true, showIf: { key: "compensation", equals: true } },
+      { key: "compensationLaw", label: "Lei aplicável (citação)", kind: "text", section: "COMPENSACAO", optional: true, showIf: { key: "compensation", equals: true },
+        hint: "Ex.: Lei Municipal nº 0000/2020, art. 5º." },
+      { key: "seedlings", label: "Mudas a plantar", kind: "int", section: "COMPENSACAO", optional: true, showIf: { key: "compensation", equals: true },
+        placeholder: (p) => `Automático: árvores × ${fmtN(p.services.SUPRESSAO.compensacao?.unidadesPorArvore ?? 0)}`, hint: "Quantidade exigida pela lei do município." },
+      { key: "seedlingUnitPrice", label: "Valor por muda", kind: "money", section: "COMPENSACAO", suffix: "R$", optional: true, showIf: { key: "compensation", equals: true },
+        placeholder: (p) => padrao(p.services.SUPRESSAO.compensacao?.valorUnidade ?? "0") },
+      { key: "freightMode", label: "Frete", kind: "select", section: "FRETE",
+        options: [{ value: "NONE", label: "Sem frete" }, { value: "FIXED", label: "Valor por cidade (informado)" }, { value: "CALC", label: "Calcular por distância e peso" }] },
+      { key: "freightValue", label: "Valor do frete", kind: "money", section: "FRETE", suffix: "R$", optional: true, showIf: { key: "freightMode", equals: "FIXED" } },
+      { key: "freightDistanceKm", label: "Distância do frete", kind: "decimal", section: "FRETE", suffix: "km", optional: true, showIf: { key: "freightMode", equals: "CALC" } },
+      { key: "freightWeightKg", label: "Peso transportado", kind: "decimal", section: "FRETE", suffix: "kg", optional: true, showIf: { key: "freightMode", equals: "CALC" },
+        placeholder: (p) => `Automático: mudas × ${fmtN(p.services.SUPRESSAO.frete?.pesoPorMudaKg ?? 0)} kg` },
+      ...SUPERVISION_FIELDS,
       { key: "modifiers", label: "Modificadores", kind: "modifiers", section: "MODIFICADORES" },
     ],
-    defaults: { trees: 1, distanceKm: 0, difficulty: 2, auxiliaries: 2, lodging: false, toll: 0, serviceType: 1, compensation: false, cacamba: false, fuelLiters: 0, modifiers: [] },
+    defaults: {
+      trees: 1, distanceKm: 0, difficulty: 2, auxiliaries: 2, lodging: false, toll: 0, mealCost: null, lodgingCost: null, serviceType: 1,
+      compensation: false, seedlings: null, seedlingUnitPrice: null, compensationLaw: null, compensationCity: null,
+      freightMode: "NONE", freightValue: null, freightDistanceKm: null, freightWeightKg: null,
+      cacamba: false, cacambaQty: null, cacambaUnitPrice: null, fuelLiters: 0, modifiers: [], supervision: true, supervisionDays: null,
+    },
     calculate: calcSupressao as ServiceDef["calculate"],
   },
   PODA: {
@@ -103,11 +174,15 @@ export const SERVICES: Record<ServiceCode, ServiceDef> = {
       ...BASE_FIELDS,
       { key: "serviceType", label: "Tipo de poda", kind: "serviceType", section: "SERVICO" },
       { key: "license", label: "Necessita licença", kind: "bool", section: "SERVICO" },
-      { key: "cacamba", label: "Utiliza caçamba", kind: "bool", section: "SERVICO" },
+      ...CACAMBA_FIELDS,
       { key: "fuelLiters", label: "Combustível motosserra (total)", kind: "decimal", section: "SERVICO", suffix: "L" },
+      ...SUPERVISION_FIELDS,
       { key: "modifiers", label: "Modificadores", kind: "modifiers", section: "MODIFICADORES" },
     ],
-    defaults: { trees: 1, distanceKm: 0, difficulty: 2, auxiliaries: 2, lodging: false, toll: 0, serviceType: 1, license: false, cacamba: false, fuelLiters: 0, modifiers: [] },
+    defaults: {
+      trees: 1, distanceKm: 0, difficulty: 2, auxiliaries: 2, lodging: false, toll: 0, mealCost: null, lodgingCost: null, serviceType: 1,
+      license: false, cacamba: false, cacambaQty: null, cacambaUnitPrice: null, fuelLiters: 0, modifiers: [], supervision: true, supervisionDays: null,
+    },
     calculate: calcPoda as ServiceDef["calculate"],
   },
 };
@@ -116,7 +191,8 @@ export const SERVICE_CODES = Object.keys(SERVICES) as ServiceCode[];
 export const isServiceCode = (v: unknown): v is ServiceCode => typeof v === "string" && v in SERVICES;
 
 /** Valida entradas e calcula. Lança EngineError/ZodError com mensagens legíveis. */
-export function calculate(service: ServiceCode, rawInputs: unknown, params: PricingParams): { inputs: ServiceInputs; result: CalcResult } {
+export function calculate(service: ServiceCode, rawInputs: unknown, rawParams: PricingParams): { inputs: ServiceInputs; result: CalcResult } {
+  const params = normalizeParams(rawParams);
   const def = SERVICES[service];
   if (!def) throw new EngineError("Serviço desconhecido.");
   const inputs = INPUT_SCHEMAS[service].parse(rawInputs) as ServiceInputs;

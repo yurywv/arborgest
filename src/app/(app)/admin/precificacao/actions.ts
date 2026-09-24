@@ -10,6 +10,8 @@ import { diffParams, parseParams } from "@/lib/pricing/params-schema";
 import { publishParamsVersion } from "@/lib/pricing/store-core";
 import { getActiveVersion, paramsOf, pricingAudit } from "@/lib/pricing/server";
 import { PROPOSAL_TEXT_DEFAULTS, type ProposalTextKey } from "@/lib/pricing/proposal-texts";
+import { formObject, keysOf, optStr, reqEnum, reqStr } from "@/lib/actions";
+import { UFS } from "@/lib/catalogs";
 
 /** Publica nova versão de parâmetros. Nunca altera versões anteriores (orçamentos antigos não mudam). */
 export async function publishParams(json: string, description: string, v2Validation: { confirmed: boolean; note: string } | null): Promise<ActionState> {
@@ -60,5 +62,45 @@ export async function toggleService(code: string, active: boolean): Promise<Acti
     const user = await assertPermission("pricing:params");
     const s = await db.pricingService.update({ where: { code }, data: { active } });
     await pricingAudit(db, user.id, "SERVICO", "PricingService", s.id, { field: "active", previousValue: !active, newValue: active });
+  });
+}
+
+// ── Leis municipais de compensação ambiental ──
+const ruleSchema = z.object({
+  city: reqStr("Município", 120),
+  state: reqEnum(keysOf(UFS), "UF"),
+  lawReference: reqStr("Lei aplicável", 300),
+  seedlingsPerTree: z.preprocess(
+    (v) => (typeof v === "string" ? Number(v.trim().replace(",", ".")) : v),
+    z.number({ error: "Mudas por árvore: número inválido." }).min(0, "Mudas por árvore não pode ser negativo.").max(10_000),
+  ),
+  freightValue: z.preprocess(
+    (v) => (v === "" || v === null || v === undefined ? null : Number(String(v).trim().replace(/\./g, "").replace(",", "."))),
+    z.number({ error: "Frete: número inválido." }).min(0, "Frete não pode ser negativo.").nullable(),
+  ),
+  notes: optStr(1000),
+});
+
+export async function saveCompensationRule(id: string | null, _: ActionState, fd: FormData): Promise<ActionState> {
+  return runAction(async () => {
+    const user = await assertPermission("pricing:params");
+    const d = ruleSchema.parse(formObject(fd));
+    const data = { ...d, seedlingsPerTree: String(d.seedlingsPerTree), freightValue: d.freightValue === null ? null : String(d.freightValue) };
+    const before = id ? await db.compensationRule.findUniqueOrThrow({ where: { id } }) : null;
+    const r = id ? await db.compensationRule.update({ where: { id }, data }) : await db.compensationRule.create({ data });
+    await pricingAudit(db, user.id, id ? "LEI_MUNICIPAL_ALTERADA" : "LEI_MUNICIPAL_CRIADA", "CompensationRule", r.id, {
+      field: `${r.city}/${r.state}`,
+      previousValue: before ? { lei: before.lawReference, mudasPorArvore: before.seedlingsPerTree.toString(), frete: before.freightValue?.toString() ?? null } : undefined,
+      newValue: { lei: r.lawReference, mudasPorArvore: r.seedlingsPerTree.toString(), frete: r.freightValue?.toString() ?? null },
+    });
+    return { ok: true, message: id ? "Regra municipal atualizada." : "Regra municipal cadastrada." };
+  });
+}
+
+export async function toggleCompensationRule(id: string, active: boolean): Promise<ActionState> {
+  return runAction(async () => {
+    const user = await assertPermission("pricing:params");
+    const r = await db.compensationRule.update({ where: { id }, data: { active } });
+    await pricingAudit(db, user.id, "LEI_MUNICIPAL_ALTERADA", "CompensationRule", id, { field: "active", previousValue: !active, newValue: active, justification: `${r.city}/${r.state}` });
   });
 }

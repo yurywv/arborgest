@@ -33,6 +33,22 @@ Botões **Precificar** também aparecem na oportunidade (funil e edição), na p
 - O preço calculado pelo motor é preservado; a mudança fica em `PricingOverride` e na trilha de auditoria, e invalida aprovações já concedidas. Duplicação e revisão mantêm a margem do orçamento.
 - O simulador do item mostra o preço que irá para a proposta com a margem do orçamento.
 
+## Ajustes de set/2026 (versão de parâmetros 1.1)
+
+Aplicados em produção pelo bootstrap como **nova versão de parâmetros** (a 1.0, idêntica à planilha, e os orçamentos já calculados não mudam):
+
+| Serviço | Fácil | Média | Difícil | Muito difícil |
+|---|---|---|---|---|
+| Supressão (árvores/dia) | 8 — altura ≤ 3 m | 2 — altura > 3 m, local longe | 1 — altura > 3 m, local perto | 0,33 — altura > 3 m, local perto |
+| Poda (árvores/dia) | 8 | 3 | 1 | 0,33 |
+
+- **Valores regionais** (em todos os serviços): alimentação e hospedagem por pessoa/dia podem ser informadas no item; em branco valem os parâmetros. Um novo item reaproveita os valores regionais, a distância e o pedágio do último item do orçamento.
+- **Caçamba** (poda e supressão): quantidade e preço unitário regionais podem ser informados; sem quantidade, vale a regra de árvores por caçamba.
+- **Compensação ambiental** (supressão): mudas a plantar e valor por muda informáveis, com município e **citação da lei municipal**. O cadastro *Administração › Parâmetros de preço › Compensação municipal* guarda, por município, a lei, as mudas por árvore suprimida e o frete padrão; escolhê-lo no item preenche os campos. A proposta cita as mudas e a lei. Sem mudas informadas, vale árvores × mudas por árvore (planilha: 15 × R$ 15 + R$ 400).
+- **Frete** (supressão): valor informado para a cidade, ou calculado = distância (km) × peso (t) × tarifa (R$/t·km), com frete mínimo; peso padrão = mudas × peso por muda (parâmetros). Fora dos fatores de dificuldade.
+- **Acompanhamento técnico** (poda e supressão, ligado por padrão em novos itens): diária do profissional (parâmetro "diária do acompanhamento técnico") + alimentação + hospedagem (se houver) + transporte (distância × custo/km + pedágio), pelos dias da operação ou pelos dias informados. Fora dos fatores de dificuldade.
+- Valores informados nunca podem ser negativos. Itens antigos (sem esses campos) continuam calculando exatamente como antes.
+
 ## Estados do orçamento
 
 `Rascunho → Em elaboração → Em aprovação interna → Aprovado internamente → Enviado ao cliente → Em negociação → Aceito | Recusado`, além de `Cancelado` e `Expirado` (validade vencida; verificado no acesso e no cron diário).
@@ -122,8 +138,8 @@ Orçamentos, propostas, PDF, auditoria, indicadores e integração com CRM/OS s�
 
 | Comando | O que verifica |
 |---|---|
-| `npm run test:unit` | Fórmulas, regras v2, validações, políticas comerciais e **paridade com o Excel** (17 cenários, tolerância R$ 0,01) |
+| `npm run test:unit` | Fórmulas, regras v2, validações, políticas comerciais, ajustes de set/2026 e **paridade com o Excel** (17 cenários, tolerância R$ 0,01) — 88 testes |
 | `npm run pricing:parity` | Regera `src/lib/pricing/parity/excel-results.json` recalculando a planilha **no Microsoft Excel** (macOS) |
 | `npx tsx scripts/pricing-parity/report.mts` | Regera o relatório `validacao-logica-legada.md` |
 | `npm run test:smoke` | Todas as rotas (inclusive precificação) com cada perfil |
-| `npm run test:e2e:pricing` | Fluxo completo no navegador (33 verificações), inclusive margem do orçamento, celular e permissões |
+| `npm run test:e2e:pricing` | Fluxo completo no navegador (40 verificações), inclusive lei municipal, valores regionais, margem do orçamento, celular e permissões |

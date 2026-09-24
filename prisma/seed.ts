@@ -9,7 +9,7 @@ import { computeRisk, crownArea, dapFromCap } from "../src/lib/arbo";
 import { refreshTreeCache } from "../src/lib/tree-cache";
 import { putObject } from "../src/lib/storage";
 import { speciesCatalogData } from "./data/species-catalog";
-import { ensurePricingSetup } from "../src/lib/pricing/store-core";
+import { applyPricingParamMigrations, ensurePricingSetup } from "../src/lib/pricing/store-core";
 import { persistCalculation, recomputeEstimate } from "../src/lib/pricing/estimate-core";
 import { calculate, SERVICES } from "../src/lib/pricing/registry";
 import { dec, money } from "../src/lib/pricing/decimal";
@@ -65,7 +65,7 @@ async function main() {
   }
   console.log("→ limpando dados…");
   await db.$transaction([
-    db.pricingAuditLog.deleteMany(), db.pricingEstimate.deleteMany(), db.pricingParameterVersion.deleteMany(), db.pricingService.deleteMany(),
+    db.pricingAuditLog.deleteMany(), db.compensationRule.deleteMany(), db.pricingEstimate.deleteMany(), db.pricingParameterVersion.deleteMany(), db.pricingService.deleteMany(),
     db.notification.deleteMany(), db.auditLog.deleteMany(), db.photo.deleteMany(), db.document.deleteMany(),
     db.inspectionFinding.deleteMany(), db.inspection.deleteMany(), db.riskAssessment.deleteMany(),
     db.intervention.deleteMany(), db.workOrder.deleteMany(), db.treeMeasurement.deleteMany(), db.tree.deleteMany(),
@@ -381,6 +381,7 @@ async function main() {
 
   console.log("→ precificação, orçamentos e propostas…");
   await ensurePricingSetup(db);
+  await applyPricingParamMigrations(db);
   const version = await db.pricingParameterVersion.findFirstOrThrow({ where: { active: true } });
   const pricing = version.snapshot as unknown as PricingParams;
   let estSeq = 0, propSeq = 0;

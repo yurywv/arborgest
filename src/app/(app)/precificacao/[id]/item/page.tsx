@@ -4,7 +4,7 @@ import { requirePermission } from "@/lib/auth/session";
 import { hasPermission } from "@/lib/auth/permissions";
 import { spGet, type SP } from "@/lib/query";
 import { EDITABLE_STATUSES, paramsOf } from "@/lib/pricing/server";
-import { activeServices, pickerTrees } from "@/lib/pricing/picker-data";
+import { activeServices, compensationRuleOptions, pickerTrees, regionalDefaults } from "@/lib/pricing/picker-data";
 import { SERVICES, isServiceCode } from "@/lib/pricing/registry";
 import { PageHeader } from "@/components/ui";
 import { ItemSimulator } from "../controls";
@@ -24,7 +24,9 @@ export default async function ItemPage({ params, searchParams }: { params: Promi
   if (!(EDITABLE_STATUSES as readonly string[]).includes(est.status)) redirect(`/precificacao/${id}`);
   const item = itemId ? await db.pricingEstimateItem.findFirst({ where: { id: itemId, estimateId: id }, include: { trees: { select: { id: true } } } }) : null;
   if (itemId && !item) notFound();
-  const [services, trees] = await Promise.all([activeServices(), pickerTrees({ propertyId: est.propertyId, clientId: est.clientId })]);
+  const [services, trees, rules, regional] = await Promise.all([
+    activeServices(), pickerTrees({ propertyId: est.propertyId, clientId: est.clientId }), compensationRuleOptions(), item ? Promise.resolve({}) : regionalDefaults(id),
+  ]);
   const requested = spGet(sp, "servico");
   const service = item && isServiceCode(item.serviceCode) ? item.serviceCode : requested && isServiceCode(requested) ? requested : services[0];
   return (
@@ -42,13 +44,14 @@ export default async function ItemPage({ params, searchParams }: { params: Promi
         services={item ? [service] : services}
         service={service}
         lockService={!!item}
-        initialInputs={(item?.inputs as Record<string, unknown>) ?? undefined}
+        initialInputs={(item?.inputs as Record<string, unknown>) ?? regional}
         description={item?.description}
         canSeeCosts={hasPermission(user.permissions, "pricing:costs")}
         showComparison={hasPermission(user.permissions, "pricing:approve") || hasPermission(user.permissions, "pricing:params")}
         trees={trees}
         initialTreeIds={item?.trees.map((t) => t.id)}
         estimateMargin={est.marginOverride?.toString() ?? null}
+        compensationRules={rules}
       />
     </>
   );

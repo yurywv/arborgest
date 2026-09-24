@@ -28,6 +28,19 @@ const priceOnScreen = async (p) => brl(await p.getByTestId("preco-final").textCo
 const totalOnScreen = async (p) => brl(await p.getByTestId("total-proposta").textContent());
 
 try {
+  // 0. Administrador cadastra a lei municipal de compensação (com frete da cidade)
+  const adm0 = await login("admin@arborgest.demo");
+  await adm0.goto(`${base}/admin/precificacao?aba=compensacao`); await ready(adm0);
+  const ruleForm = adm0.locator("section", { hasText: "Nova lei municipal" });
+  await ruleForm.getByLabel(/^Município/).fill("Hortolândia");
+  await ruleForm.locator("select[name=state]").selectOption("SP");
+  await ruleForm.getByLabel(/^Lei aplicável/).fill("Lei Municipal nº 9.999/2021 (E2E)");
+  await ruleForm.getByLabel(/^Mudas por árvore/).fill("10");
+  await ruleForm.getByLabel(/^Frete padrão/).fill("350");
+  await ruleForm.getByRole("button", { name: "Cadastrar regra" }).click();
+  await adm0.getByText("Regra municipal cadastrada.").waitFor();
+  check("lei municipal de compensação cadastrada", true);
+
   const com = await login("comercial@arborgest.demo");
 
   // 1. Oportunidade → Precificar → novo orçamento (cliente vem da oportunidade; escolhe a propriedade)
@@ -71,6 +84,43 @@ try {
   await com.waitForURL(estUrl); await ready(com);
   check("poda salva com a quantidade de árvores selecionadas", await com.getByText(`${selected} árvore(s) selecionadas`).isVisible());
 
+  // 3b. Supressão: nível "muito difícil", valores regionais, caçamba informada, compensação pela lei municipal, frete e acompanhamento técnico
+  await com.getByRole("link", { name: "Adicionar serviço" }).first().click();
+  await com.waitForURL(/\/item/); await ready(com);
+  await com.locator("#svc").selectOption("SUPRESSAO");
+  await com.locator("#sim-trees").fill("3");
+  check("valores regionais reaproveitados do item anterior (distância)", (await com.locator("#sim-distanceKm").inputValue()) === "40");
+  await com.getByRole("radio", { name: /Muito difícil/ }).click();
+  await com.locator("#sim-mealCost").fill("70");
+  await com.locator("#sim-cacamba").check();
+  await com.locator("#sim-cacambaQty").fill("2");
+  await com.locator("#sim-cacambaUnitPrice").fill("900");
+  await com.locator("#sim-compensation").check();
+  const ruleValue = await com.locator("#sim-compensationRule option", { hasText: "Hortolândia/SP" }).first().getAttribute("value");
+  await com.locator("#sim-compensationRule").selectOption(ruleValue);
+  check("lei municipal preenche mudas e frete", (await com.locator("#sim-seedlings").inputValue()) === "30" && (await com.locator("#sim-freightValue").inputValue()) === "350");
+  check("acompanhamento técnico marcado por padrão", await com.locator("#sim-supervision").isChecked());
+  const supPrice = await priceOnScreen(com);
+  await com.getByRole("button", { name: "Ver memória de cálculo" }).click();
+  const memory = (await com.locator("section[aria-label='Memória de cálculo']").textContent()).replace(/\u00a0/g, " ");
+  check("memória mostra acompanhamento técnico, caçambas informadas, valor regional e lei",
+    ["Acompanhamento técnico — diária", "2 caçamba(s) informada(s) × R$ 900,00 (preço regional)", "R$ 70,00 (valor regional)", "Lei Municipal nº 9.999/2021", "Muito difícil"].every((t) => memory.includes(t)));
+  const totalBeforeSup = await (async () => { await com.goto(estUrl); await ready(com); const t = await totalOnScreen(com); await com.goBack(); await ready(com); return t; })();
+  await com.locator("#svc").selectOption("SUPRESSAO");
+  await com.locator("#sim-trees").fill("3");
+  await com.getByRole("radio", { name: /Muito difícil/ }).click();
+  await com.locator("#sim-mealCost").fill("70");
+  await com.locator("#sim-cacamba").check();
+  await com.locator("#sim-cacambaQty").fill("2");
+  await com.locator("#sim-cacambaUnitPrice").fill("900");
+  await com.locator("#sim-compensation").check();
+  await com.locator("#sim-compensationRule").selectOption(ruleValue);
+  const supPrice2 = await priceOnScreen(com);
+  await com.getByRole("button", { name: "Adicionar à proposta" }).click();
+  await com.waitForURL(estUrl); await ready(com);
+  const supSaved = (await totalOnScreen(com)) - totalBeforeSup;
+  check("supressão com os novos campos: navegador = valor gravado pelo servidor", Math.abs(supPrice2 - supSaved) < 0.01 && Math.abs(supPrice - supPrice2) < 0.01, `R$ ${supPrice2} × R$ ${supSaved.toFixed(2)}`);
+
   // 4. Ajuste de margem (com motivo) e desconto
   const before = await totalOnScreen(com);
   await com.getByRole("button", { name: "Ajustar" }).first().click();
@@ -101,7 +151,7 @@ try {
   await com.getByText(/Margem de lucro de 30% aplicada/).waitFor();
   await com.reload(); await ready(com);
   const afterMargin = await totalOnScreen(com);
-  check("margem de lucro do orçamento aplicada aos itens", afterMargin !== afterDiscount && (await com.getByText("Margem do orçamento 30%").isVisible()), `${afterDiscount} → ${afterMargin}`);
+  check("margem de lucro do orçamento aplicada aos itens", afterMargin !== afterDiscount && (await com.getByText("Margem do orçamento 30%").first().isVisible()), `${afterDiscount} → ${afterMargin}`);
   await com.locator("#discountType").selectOption("PERCENT");
   await com.locator("#f-discountValue").fill("90");
   await com.locator("form", { hasText: "Aplicar desconto" }).getByLabel(/^Motivo/).fill("Tentativa de desconto excessivo.");
@@ -135,6 +185,7 @@ try {
   const body = (await pdf.body()).toString("latin1");
   check("PDF da proposta gerado", pdf.headers()["content-type"] === "application/pdf" && body.startsWith("%PDF") && body.includes("TOTAL DA PROPOSTA"));
   check("PDF não expõe custos/margem", !/custo operacional|margem|rateio|sal[aá]rio/i.test(body));
+  check("PDF cita a lei municipal da compensação", body.includes("9.999/2021"));
   await com.getByRole("button", { name: "Registrar envio" }).click();
   await com.waitForTimeout(1500); await com.goto(estUrl); await ready(com);
   check("proposta enviada ao cliente", await com.getByText("Enviado ao cliente").first().isVisible());
@@ -169,12 +220,12 @@ try {
   await adm.getByLabel("Custo técnico/dia").fill("450");
   await adm.getByPlaceholder(/Descrição\/motivo/).fill("Reajuste do custo técnico (teste E2E)");
   await adm.getByRole("button", { name: "Publicar nova versão" }).click();
-  await adm.getByText(/Versão 1\.1 publicada/).waitFor();
+  await adm.getByText(/Versão 1\.\d+ publicada/).waitFor();
   await adm.goto(`${base}/precificacao`); await ready(adm);
   const oldTotalAfter = brl(await adm.locator("tr", { hasText: "2026-00002" }).locator("td").nth(5).textContent());
   check("nova versão de parâmetros não altera orçamento existente", oldTotal === oldTotalAfter, `R$ ${oldTotal}`);
   await adm.locator("tr", { hasText: "2026-00002" }).getByRole("link").first().click(); await ready(adm);
-  check("orçamento antigo oferece atualização explícita para v1.1", await adm.getByRole("button", { name: /Atualizar para parâmetros v1\.1/ }).isVisible());
+  check("orçamento antigo oferece atualização explícita para a nova versão", await adm.getByRole("button", { name: /Atualizar para parâmetros v1\.\d+/ }).isVisible());
 
   // 10. Permissões
   const con = await login("consulta@arborgest.demo");

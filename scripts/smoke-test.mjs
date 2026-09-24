@@ -43,7 +43,7 @@ const pages = [
   "/precificacao", "/precificacao?pendentes=1", "/precificacao/novo", `/precificacao/novo?oportunidade=${opp.id}`, `/precificacao/novo?propriedade=${property.id}`,
   "/precificacao/simulador", `/precificacao/${est.id}`, ...["proposta", "historico", "dados"].map((a) => `/precificacao/${est.id}?aba=${a}`),
   `/precificacao/${draft.id}/item`, `/precificacao/${draft.id}/item?item=${draft.items[0].id}`, `/precificacao/${draft.id}?aba=dados`, `/precificacao/calculos/${calc.id}`,
-  `/clientes/${est.clientId}?aba=orcamentos`, "/admin/precificacao", ...["versoes", "textos", "servicos"].map((a) => `/admin/precificacao?aba=${a}`),
+  `/clientes/${est.clientId}?aba=orcamentos`, "/admin/precificacao", ...["versoes", "compensacao", "textos", "servicos"].map((a) => `/admin/precificacao?aba=${a}`),
   "/admin/precificacao/validacao", `/api/propostas/${est.proposals[0].id}/pdf`, "/busca?q=2026-0000",
   "/api/health", `/api/qrcode/${tree.code}`, `/api/qrcode/${tree.code}?format=png`,
   ...["inventario", "fotografico", "risco"].flatMap((t) => ["csv", "xlsx", "pdf"].map((f) => `/api/relatorios/${t}?format=${f}`)),

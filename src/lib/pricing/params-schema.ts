@@ -14,8 +14,12 @@ const num = (label: string, o: { gt?: number; gte?: number; lt?: number; lte?: n
 
 const money = (label: string) => num(label, { gte: 0 });
 const fraction = (label: string) => num(label, { gte: 0, lt: 1 });
-const productivity = (svc: string) =>
-  z.object({ 1: num(`${svc} — produtividade fácil`, { gt: 0 }), 2: num(`${svc} — produtividade média`, { gt: 0 }), 3: num(`${svc} — produtividade difícil`, { gt: 0 }) });
+const productivity = (svc: string, allow4 = true) =>
+  z.object({
+    1: num(`${svc} — produtividade fácil`, { gt: 0 }), 2: num(`${svc} — produtividade média`, { gt: 0 }), 3: num(`${svc} — produtividade difícil`, { gt: 0 }),
+    ...(allow4 ? { 4: num(`${svc} — produtividade muito difícil`, { gt: 0 }).optional() } : {}),
+  });
+const hints = z.record(z.string(), z.string().trim().max(120)).optional();
 
 const modifier = z.object({
   key: z.string().regex(/^[A-Z0-9_]{2,40}$/, "Código do modificador: letras maiúsculas, números e _."),
@@ -59,6 +63,7 @@ export const paramsSchema = z
       combustivelLitro: money("Combustível (R$/L)"),
       cacamba: money("Custo caçamba"),
       horasDia: num("Horas por dia", { gt: 0, lte: 24 }),
+      supervisaoDia: money("Diária do acompanhamento técnico"),
     }),
     rules: z.object({
       podaPriceMethod: z.enum(["LEGACY", "STANDARD"]),
@@ -72,17 +77,23 @@ export const paramsSchema = z
       fluxoObrigatorio: z.boolean(),
     }),
     services: z.object({
-      INVENTARIO: z.object({ productivity: productivity("Inventário") }),
+      INVENTARIO: z.object({ productivity: productivity("Inventário", false), difficultyHints: hints }),
       SUPRESSAO: z.object({
         productivity: productivity("Supressão"),
+        difficultyHints: hints,
         serviceTypes: z.array(serviceType).min(1),
         licenseTiers: z.array(tier).min(1),
-        cacambaArvoresPor: z.object({ 1: num("Árvores/caçamba (fácil)", { gt: 0 }), 2: num("Árvores/caçamba (média)", { gt: 0 }), 3: num("Árvores/caçamba (difícil)", { gt: 0 }) }),
-        compensacao: z.object({ unidadesPorArvore: money("Unidades compensatórias por árvore"), valorUnidade: money("Valor por unidade"), custoFixo: money("Custo fixo da compensação") }),
+        cacambaArvoresPor: z.object({
+          1: num("Árvores/caçamba (fácil)", { gt: 0 }), 2: num("Árvores/caçamba (média)", { gt: 0 }), 3: num("Árvores/caçamba (difícil)", { gt: 0 }),
+          4: num("Árvores/caçamba (muito difícil)", { gt: 0 }).optional(),
+        }),
+        compensacao: z.object({ unidadesPorArvore: money("Mudas por árvore suprimida"), valorUnidade: money("Valor por muda"), custoFixo: money("Custo fixo da compensação") }),
+        frete: z.object({ tarifaTonKm: money("Tarifa de frete"), valorMinimo: money("Frete mínimo"), pesoPorMudaKg: money("Peso por muda") }),
         modifiers: z.array(modifier),
       }),
       PODA: z.object({
         productivity: productivity("Poda"),
+        difficultyHints: hints,
         serviceTypes: z.array(serviceType).min(1),
         licenseTiers: z.array(tier).min(1),
         modifiers: z.array(modifier),

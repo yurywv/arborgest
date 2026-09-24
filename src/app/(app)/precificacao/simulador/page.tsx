@@ -1,7 +1,7 @@
 import { requirePermission } from "@/lib/auth/session";
 import { hasPermission } from "@/lib/auth/permissions";
 import { getActiveVersion, paramsOf } from "@/lib/pricing/server";
-import { activeServices } from "@/lib/pricing/picker-data";
+import { activeServices, compensationRuleOptions } from "@/lib/pricing/picker-data";
 import { ENGINE_LABEL } from "@/lib/pricing/types";
 import { LinkButton, PageHeader } from "@/components/ui";
 import { PricingSimulator } from "@/components/pricing/simulator";
@@ -10,7 +10,7 @@ export const metadata = { title: "Simulador de preço" };
 
 export default async function SimulatorPage() {
   const user = await requirePermission("pricing:read");
-  const [version, services] = await Promise.all([getActiveVersion(), activeServices()]);
+  const [version, services, rules] = await Promise.all([getActiveVersion(), activeServices(), compensationRuleOptions()]);
   return (
     <>
       <PageHeader
@@ -23,6 +23,7 @@ export default async function SimulatorPage() {
         params={paramsOf(version)}
         versionLabel={version.label}
         services={services}
+        compensationRules={rules}
         canSeeCosts={hasPermission(user.permissions, "pricing:costs")}
         showComparison={hasPermission(user.permissions, "pricing:approve") || hasPermission(user.permissions, "pricing:params")}
       />

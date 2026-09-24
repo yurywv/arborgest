@@ -2,10 +2,10 @@
  * ser usada pelo app, pelo seed e pelo bootstrap de deploy (que roda fora do Next.js).
  */
 import type { Prisma, PrismaClient } from "@prisma/client";
-import { LEGACY_EXCEL_PARAMS } from "./defaults";
+import { LEGACY_EXCEL_PARAMS, PRICING_PARAM_MIGRATIONS, normalizeParams } from "./defaults";
 import { SERVICES } from "./registry";
 import type { PricingParams, ServiceCode } from "./types";
-import { DIFFICULTY_LABEL } from "./types";
+import { DIFFICULTIES, DIFFICULTY_LABEL } from "./types";
 
 type Tx = PrismaClient | Prisma.TransactionClient;
 
@@ -23,10 +23,12 @@ const GENERAL_LABELS: Record<keyof PricingParams["general"], [string, string]> =
   combustivelLitro: ["Preço combustível motosserra", "R$/L"],
   cacamba: ["Custo caçamba", "R$"],
   horasDia: ["Horas por dia padrão", "h"],
+  supervisaoDia: ["Diária do acompanhamento técnico", "R$"],
 };
 
 /** Linhas normalizadas de uma versão (espelho consultável do snapshot). */
-function normalized(p: PricingParams) {
+function normalized(raw: PricingParams) {
+  const p = normalizeParams(raw);
   const parameters: Prisma.PricingParameterCreateManyVersionInput[] = [
     ...Object.entries(p.general).map(([k, v]) => ({
       group: "GERAL", key: `geral.${k}`, label: GENERAL_LABELS[k as keyof PricingParams["general"]][0], value: v, unit: GENERAL_LABELS[k as keyof PricingParams["general"]][1],
@@ -42,19 +44,28 @@ function normalized(p: PricingParams) {
   const sup = p.services.SUPRESSAO;
   if (sup.compensacao) {
     parameters.push(
-      { group: "SUPRESSAO", key: "supressao.compensacao.unidadesPorArvore", label: "Unidades compensatórias por árvore", value: sup.compensacao.unidadesPorArvore, unit: "un." },
-      { group: "SUPRESSAO", key: "supressao.compensacao.valorUnidade", label: "Valor por unidade compensatória", value: sup.compensacao.valorUnidade, unit: "R$" },
+      { group: "SUPRESSAO", key: "supressao.compensacao.unidadesPorArvore", label: "Mudas por árvore suprimida (padrão)", value: sup.compensacao.unidadesPorArvore, unit: "mudas" },
+      { group: "SUPRESSAO", key: "supressao.compensacao.valorUnidade", label: "Valor por muda", value: sup.compensacao.valorUnidade, unit: "R$" },
       { group: "SUPRESSAO", key: "supressao.compensacao.custoFixo", label: "Custo fixo da compensação", value: sup.compensacao.custoFixo, unit: "R$" },
     );
   }
-  for (const d of [1, 2, 3] as const)
-    if (sup.cacambaArvoresPor) parameters.push({ group: "SUPRESSAO", key: `supressao.cacamba.arvoresPor.${d}`, label: `Árvores por caçamba (${DIFFICULTY_LABEL[d]})`, value: sup.cacambaArvoresPor[d], unit: "árvores" });
+  if (sup.frete) {
+    parameters.push(
+      { group: "SUPRESSAO", key: "supressao.frete.tarifaTonKm", label: "Tarifa de frete", value: sup.frete.tarifaTonKm, unit: "R$/t·km" },
+      { group: "SUPRESSAO", key: "supressao.frete.valorMinimo", label: "Frete mínimo", value: sup.frete.valorMinimo, unit: "R$" },
+      { group: "SUPRESSAO", key: "supressao.frete.pesoPorMudaKg", label: "Peso por muda", value: sup.frete.pesoPorMudaKg, unit: "kg" },
+    );
+  }
+  for (const d of DIFFICULTIES)
+    if (sup.cacambaArvoresPor?.[d]) parameters.push({ group: "SUPRESSAO", key: `supressao.cacamba.arvoresPor.${d}`, label: `Árvores por caçamba (${DIFFICULTY_LABEL[d]})`, value: sup.cacambaArvoresPor[d], unit: "árvores" });
 
   const services = Object.entries(p.services) as [ServiceCode, PricingParams["services"][ServiceCode]][];
   return {
     parameters,
     productivity: services.flatMap(([svc, sp]) =>
-      ([1, 2, 3] as const).map((d) => ({ serviceCode: svc, difficulty: d, label: DIFFICULTY_LABEL[d], treesPerDay: sp.productivity[d] }))),
+      DIFFICULTIES.filter((d) => sp.productivity[d]).map((d) => ({
+        serviceCode: svc, difficulty: d, label: [DIFFICULTY_LABEL[d], sp.difficultyHints?.[d]].filter(Boolean).join(" — "), treesPerDay: sp.productivity[d]!,
+      }))),
     modifiers: services.flatMap(([svc, sp]) =>
       (sp.modifiers ?? []).map((m) => ({ serviceCode: svc, key: m.key, description: m.label, factor: m.factor, active: m.active, order: m.order, addsDays: m.addsDays, legacyInProduct: m.legacyInProduct }))),
     serviceTypes: services.flatMap(([svc, sp]) =>
@@ -105,4 +116,24 @@ export async function ensurePricingSetup(db: PrismaClient) {
     return { created: true };
   }
   return { created: false };
+}
+
+/** Aplica, uma única vez, as mudanças de parâmetros registradas (cada uma gera NOVA versão). */
+export async function applyPricingParamMigrations(db: PrismaClient) {
+  const applied: string[] = [];
+  for (const m of PRICING_PARAM_MIGRATIONS) {
+    const key = `pricing_param_migration:${m.id}`;
+    if (await db.setting.findUnique({ where: { key } })) continue;
+    await db.$transaction(async (tx) => {
+      const active = await tx.pricingParameterVersion.findFirstOrThrow({ where: { active: true } });
+      const next = m.apply(active.snapshot as unknown as PricingParams);
+      const v = await publishParamsVersion(tx, next, { description: m.description });
+      await tx.pricingAuditLog.create({
+        data: { action: "PARAMETROS", entity: "PricingParameterVersion", entityId: v.id, field: `versão ${active.label} → ${v.label}`, justification: m.description },
+      });
+      await tx.setting.create({ data: { key, value: v.label } });
+      applied.push(`${m.id} → v${v.label}`);
+    });
+  }
+  return applied;
 }

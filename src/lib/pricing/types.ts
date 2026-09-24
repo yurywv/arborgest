@@ -9,8 +9,9 @@ export const ENGINE_LABEL: Record<EngineVersion, string> = {
 };
 
 export type ServiceCode = "INVENTARIO" | "SUPRESSAO" | "PODA";
-export type Difficulty = 1 | 2 | 3;
-export const DIFFICULTY_LABEL: Record<Difficulty, string> = { 1: "Fácil", 2: "Média", 3: "Difícil" };
+export type Difficulty = 1 | 2 | 3 | 4;
+export const DIFFICULTY_LABEL: Record<Difficulty, string> = { 1: "Fácil", 2: "Média", 3: "Difícil", 4: "Muito difícil" };
+export const DIFFICULTIES: Difficulty[] = [1, 2, 3, 4];
 
 /** "LEGACY": preço final da poda = custo operacional / (1 − imposto) — margem ignorada, como na planilha.
  *  "STANDARD": preço = custo / (1 − margem) / (1 − imposto), igual a inventário e supressão. */
@@ -32,6 +33,8 @@ export interface GeneralParams {
   combustivelLitro: Dec;
   cacamba: Dec;
   horasDia: Dec;
+  /** Custo diário do profissional de acompanhamento técnico (poda/supressão). */
+  supervisaoDia: Dec;
 }
 
 export interface RuleParams {
@@ -78,12 +81,20 @@ export interface ServiceTypeDef {
   cacambaArvoresPor?: Dec; // poda: árvores por caçamba conforme o tipo
 }
 
+/** Níveis 1–3 obrigatórios; o nível 4 ("muito difícil") existe apenas nos serviços que o definem. */
+export type Productivity = { 1: Dec; 2: Dec; 3: Dec; 4?: Dec };
+
 export interface ServiceParams {
-  productivity: Record<Difficulty, Dec>; // árvores/dia
+  productivity: Productivity; // árvores/dia
+  /** Descrição de cada nível (ex.: "altura > 3 m, local perto"). */
+  difficultyHints?: Partial<Record<Difficulty, string>>;
   serviceTypes?: ServiceTypeDef[];
   licenseTiers?: LicenseTier[];
-  cacambaArvoresPor?: Record<Difficulty, Dec>; // supressão: por dificuldade
+  cacambaArvoresPor?: Partial<Record<Difficulty, Dec>>; // supressão: por dificuldade
+  /** unidadesPorArvore = mudas por árvore suprimida (padrão quando não informado); valorUnidade = valor por muda. */
   compensacao?: { unidadesPorArvore: Dec; valorUnidade: Dec; custoFixo: Dec };
+  /** Frete calculado = distância (km) × peso (t) × tarifa, com valor mínimo. */
+  frete?: { tarifaTonKm: Dec; valorMinimo: Dec; pesoPorMudaKg: Dec };
   modifiers?: ModifierDef[];
 }
 
@@ -103,21 +114,40 @@ export interface BaseInputs {
   auxiliaries: number;
   lodging: boolean;
   toll: number; // pedágio (R$)
+  /** Valores regionais (null/ausente = padrão dos parâmetros). */
+  mealCost?: number | null; // alimentação por pessoa/dia
+  lodgingCost?: number | null; // hospedagem por pessoa/dia
 }
 export type InventarioInputs = BaseInputs;
-export interface SupressaoInputs extends BaseInputs {
-  serviceType: number; // 1 = Licenciamento + Supressão, 2 = Apenas supressão
-  compensation: boolean;
+
+/** Campos comuns às operações de campo (supressão e poda). */
+export interface FieldOperationInputs extends BaseInputs {
+  serviceType: number;
   cacamba: boolean;
+  cacambaQty?: number | null; // null = calculada pela regra de árvores por caçamba
+  cacambaUnitPrice?: number | null; // null = custo padrão da caçamba
   fuelLiters: number;
   modifiers: string[];
+  /** Acompanhamento técnico: profissional presente na operação (diária + alimentação + hospedagem + transporte). */
+  supervision?: boolean;
+  supervisionDays?: number | null; // null = dias estimados da operação
 }
-export interface PodaInputs extends BaseInputs {
-  serviceType: number; // 1 = Limpeza + Raleamento, 2 = Só limpeza, 3 = Só raleamento
+export type FreightMode = "NONE" | "FIXED" | "CALC";
+export interface SupressaoInputs extends FieldOperationInputs {
+  // serviceType: 1 = Licenciamento + Supressão, 2 = Apenas supressão
+  compensation: boolean;
+  seedlings?: number | null; // mudas a plantar (null = árvores × mudas por árvore)
+  seedlingUnitPrice?: number | null; // valor por muda (null = padrão)
+  compensationLaw?: string | null; // lei municipal aplicável (citação)
+  compensationCity?: string | null;
+  freightMode?: FreightMode;
+  freightValue?: number | null; // FIXED: valor do frete para a cidade
+  freightDistanceKm?: number | null; // CALC
+  freightWeightKg?: number | null; // CALC (null = mudas × peso por muda)
+}
+export interface PodaInputs extends FieldOperationInputs {
+  // serviceType: 1 = Limpeza + Raleamento, 2 = Só limpeza, 3 = Só raleamento
   license: boolean;
-  cacamba: boolean;
-  fuelLiters: number;
-  modifiers: string[];
 }
 export type ServiceInputs = InventarioInputs | SupressaoInputs | PodaInputs;
 
@@ -167,6 +197,8 @@ export interface CalcResult {
   /** Margem efetiva = (preço × (1 − imposto) − custo operacional) / (preço × (1 − imposto)). */
   effectiveMargin: Dec;
   priceMethod: "STANDARD" | "LEGACY_PODA";
+  /** Informações complementares (mudas, lei aplicável, caçambas, dias de acompanhamento…). */
+  details?: Record<string, string | number | null>;
   components: CalcComponent[];
   warnings: CalcWarning[];
 }
