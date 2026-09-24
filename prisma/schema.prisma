@@ -891,6 +891,9 @@ model PricingEstimate {
   // Totais (recalculados no servidor a cada alteração)
   calculatedTotal      Decimal        @default(0) @db.Decimal(14, 2) // soma dos preços calculados originais
   itemsTotal           Decimal        @default(0) @db.Decimal(14, 2) // soma dos preços dos itens após ajustes
+  /// Margem de lucro definida para o orçamento (fração ≥ 0), aplicada aos itens sem margem/preço próprios.
+  marginOverride       Decimal?       @db.Decimal(10, 6)
+  marginReason         String?
   discountType         String? // PERCENT | AMOUNT
   discountValue        Decimal?       @db.Decimal(14, 4)
   discountReason       String?

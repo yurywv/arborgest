@@ -22,34 +22,52 @@ export function effectiveMargin(price: DecimalT, cost: DecimalT, tax: DecimalT) 
 }
 
 export interface ItemAdjustments {
-  marginOverride?: string | null; // fração
+  marginOverride?: string | null; // fração — margem própria do item
   extraCost?: string | null; // R$
   priceOverride?: string | null; // R$
+  estimateMargin?: string | null; // fração — margem de lucro definida no orçamento (vale se o item não tiver a sua)
+}
+
+/** Tolerância para o arredondamento do preço a centavos (≈ 0,01%). */
+export const MARGIN_TOLERANCE = dec("-0.0001");
+const present = (v: string | null | undefined) => v !== null && v !== undefined && v !== "";
+
+/** Margem informada pelo usuário: nunca negativa e sempre menor que 100%. */
+export function validateMargin(m: DecimalT, label = "Margem de lucro") {
+  if (m.lt(0)) throw new EngineError(`${label} não pode ser negativa.`);
+  if (m.gte(1)) throw new EngineError(`${label} deve ser menor que 100%.`);
+  return m;
+}
+
+/** Bloqueia ajustes (preço/desconto) que deixariam a margem efetiva negativa. */
+export function assertNonNegativeMargin(margin: DecimalT, what: string) {
+  if (margin.lt(MARGIN_TOLERANCE))
+    throw new EngineError(`${what} resultaria em margem negativa (${margin.mul(100).toDecimalPlaces(2).toString().replace(".", ",")}%). Margens negativas não são permitidas.`);
 }
 
 /**
  * Preço do item após ajustes autorizados. O preço calculado pelo motor nunca é alterado.
  *  - preço final informado: prevalece sobre tudo;
- *  - margem alterada e/ou custo adicional: preço = (custo + adicional) ÷ (1 − margem) ÷ (1 − imposto)
- *    (usa a fórmula padronizada; na poda legada sem margem alterada, mantém custo ÷ (1 − imposto)).
+ *  - margem (do item ou, na falta, a do orçamento) e/ou custo adicional:
+ *    preço = (custo + adicional) ÷ (1 − margem) ÷ (1 − imposto) — fórmula padronizada, inclusive na poda;
+ *  - poda legada sem margem definida e com custo adicional: mantém custo ÷ (1 − imposto).
  */
 export function adjustedItemPrice(r: CalcResult, adj: ItemAdjustments) {
   const tax = dec(r.tax);
   const extra = dec(adj.extraCost ?? 0);
   const cost = dec(r.operationalCost).plus(extra);
+  const marginSrc = present(adj.marginOverride) ? adj.marginOverride : present(adj.estimateMargin) ? adj.estimateMargin : null;
   let price: DecimalT;
-  if (adj.priceOverride !== null && adj.priceOverride !== undefined && adj.priceOverride !== "") price = dec(adj.priceOverride);
-  else if ((adj.marginOverride ?? "") !== "" || !extra.isZero()) {
-    const hasMargin = adj.marginOverride !== null && adj.marginOverride !== undefined && adj.marginOverride !== "";
-    if (!hasMargin && r.priceMethod === "LEGACY_PODA") price = cost.div(D.sub(1, tax));
+  if (present(adj.priceOverride)) price = dec(adj.priceOverride);
+  else if (marginSrc !== null || !extra.isZero()) {
+    if (marginSrc === null && r.priceMethod === "LEGACY_PODA") price = cost.div(D.sub(1, tax));
     else {
-      const m = hasMargin ? dec(adj.marginOverride) : dec(r.margin);
-      if (m.gte(1) || m.lt(0)) throw new EngineError("Margem deve estar entre 0% e 99,99%.");
+      const m = validateMargin(marginSrc !== null ? dec(marginSrc) : dec(r.margin), "Margem");
       price = cost.div(D.sub(1, m)).div(D.sub(1, tax));
     }
   } else price = dec(r.finalPriceRounded);
   price = money(price);
-  return { price, cost, margin: effectiveMargin(price, cost, tax) };
+  return { price, cost, margin: effectiveMargin(price, cost, tax), marginSource: present(adj.priceOverride) ? "PRECO" : present(adj.marginOverride) ? "ITEM" : present(adj.estimateMargin) ? "ORCAMENTO" : "PADRAO" };
 }
 
 export interface EstimateTotalsInput {

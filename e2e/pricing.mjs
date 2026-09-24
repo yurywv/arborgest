@@ -75,7 +75,7 @@ try {
   const before = await totalOnScreen(com);
   await com.getByRole("button", { name: "Ajustar" }).first().click();
   await com.getByLabel(/^Margem \(%\)/).fill("40");
-  await com.getByLabel(/^Motivo/).last().fill("Serviço com prazo reduzido solicitado pelo cliente.");
+  await com.getByRole("dialog").getByLabel(/^Motivo/).fill("Serviço com prazo reduzido solicitado pelo cliente.");
   await com.getByRole("button", { name: "Aplicar ajuste" }).click();
   await com.waitForTimeout(1500); await com.reload(); await ready(com);
   const afterAdjust = await totalOnScreen(com);
@@ -87,6 +87,29 @@ try {
   await com.waitForTimeout(1500); await com.reload(); await ready(com);
   const afterDiscount = await totalOnScreen(com);
   check("desconto de 5% aplicado ao total", Math.abs(afterDiscount - afterAdjust * 0.95) < 0.02, `${afterAdjust} → ${afterDiscount}`);
+
+  // 4b. Margem de lucro do orçamento: negativa é rejeitada; positiva é aplicada; desconto que zeraria a margem é bloqueado
+  const marginForm = com.locator("form", { hasText: "Aplicar margem" });
+  await marginForm.getByLabel(/^Margem de lucro/).fill("-5");
+  await marginForm.getByLabel(/^Motivo/).fill("Teste de margem negativa.");
+  await com.getByRole("button", { name: "Aplicar margem" }).click();
+  await com.getByText("Margem de lucro não pode ser negativa.").first().waitFor();
+  check("margem de lucro negativa é rejeitada", true);
+  await marginForm.getByLabel(/^Margem de lucro/).fill("30");
+  await marginForm.getByLabel(/^Motivo/).fill("Margem acordada com a diretoria para este cliente.");
+  await com.getByRole("button", { name: "Aplicar margem" }).click();
+  await com.getByText(/Margem de lucro de 30% aplicada/).waitFor();
+  await com.reload(); await ready(com);
+  const afterMargin = await totalOnScreen(com);
+  check("margem de lucro do orçamento aplicada aos itens", afterMargin !== afterDiscount && (await com.getByText("Margem do orçamento 30%").isVisible()), `${afterDiscount} → ${afterMargin}`);
+  await com.locator("#discountType").selectOption("PERCENT");
+  await com.locator("#f-discountValue").fill("90");
+  await com.locator("form", { hasText: "Aplicar desconto" }).getByLabel(/^Motivo/).fill("Tentativa de desconto excessivo.");
+  await com.locator("form", { hasText: "Aplicar desconto" }).getByText(/Confirmo desconto/).click();
+  await com.getByRole("button", { name: "Aplicar desconto" }).click();
+  await com.getByText(/margem negativa/).first().waitFor();
+  await com.reload(); await ready(com);
+  check("desconto que geraria margem negativa é bloqueado", (await totalOnScreen(com)) === afterMargin);
 
   // 5. Aprovação por alçada (poda legada ⇒ margem baixa ⇒ diretoria)
   await com.getByRole("button", { name: "Solicitar aprovação" }).click();

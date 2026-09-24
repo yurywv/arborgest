@@ -8,7 +8,7 @@ import type { PricingEstimateStatus } from "@prisma/client";
 import { ActionForm, Checkbox, Field, SubmitButton, TextArea } from "@/components/form";
 import type { ActionState } from "@/lib/action-state";
 import {
-  adjustItem, changeStatus, createWorkOrdersFromEstimate, decideApproval, repriceWithActiveParams, saveItem, setDiscount,
+  adjustItem, changeStatus, createWorkOrdersFromEstimate, decideApproval, repriceWithActiveParams, saveItem, setDiscount, setEstimateMargin,
 } from "../actions";
 import { PricingSimulator, type SimulatorProps } from "@/components/pricing/simulator";
 
@@ -83,11 +83,11 @@ export function AdjustItem({ estimateId, itemId, marginOverride, extraCost, pric
             <p className="mb-3 text-xs text-stone-500">O preço calculado original é preservado. Deixe em branco para remover o ajuste.</p>
             <ActionForm action={adjustItem.bind(null, estimateId, itemId)} className="space-y-3" onSuccess={() => setOpen(false)} refreshOnSuccess>
               <div className="grid grid-cols-2 gap-3">
-                <Field name="marginOverride" label="Margem (%)" inputMode="decimal" defaultValue={pctStr} placeholder="35" />
+                <Field name="marginOverride" label="Margem (%)" inputMode="decimal" defaultValue={pctStr} placeholder="35" hint="≥ 0% e < 100%" />
                 <Field name="extraCost" label="Custo adicional (R$)" inputMode="decimal" defaultValue={brl(extraCost)} />
               </div>
               <Field name="priceOverride" label="Preço final do item (R$)" inputMode="decimal" defaultValue={brl(priceOverride)} hint="Se preenchido, prevalece sobre margem e custo adicional." />
-              <TextArea name="reason" label="Motivo" required rows={2} />
+              <TextArea name="adjustReason" label="Motivo" required rows={2} />
               <div className="flex justify-end gap-2">
                 <button type="button" className="btn btn-secondary" onClick={() => setOpen(false)}>Cancelar</button>
                 <SubmitButton>Aplicar ajuste</SubmitButton>
@@ -119,6 +119,18 @@ export function DiscountForm({ estimateId, type, value, reason, alert }: { estim
       <TextArea name="reason" label="Motivo" rows={2} defaultValue={reason} />
       <Checkbox name="confirmDiscount" label={`Confirmo desconto acima de ${alert}, se for o caso`} />
       <SubmitButton variant="secondary">Aplicar desconto</SubmitButton>
+    </ActionForm>
+  );
+}
+
+export function EstimateMarginForm({ estimateId, current, defaultPct }: { estimateId: string; current: string | null; defaultPct: string }) {
+  const pct = current ? String(Math.round(Number(current) * 1e6) / 1e4).replace(".", ",") : "";
+  return (
+    <ActionForm action={setEstimateMargin.bind(null, estimateId)} className="space-y-3" refreshOnSuccess>
+      <Field name="marginPercent" label="Margem de lucro (%)" inputMode="decimal" defaultValue={pct} placeholder={defaultPct} suffix="%"
+        hint={`Em branco = padrão (${defaultPct}%). Não pode ser negativa. Vale para todos os itens sem margem ou preço próprios.`} />
+      <TextArea name="marginReason" label="Motivo" rows={2} required />
+      <SubmitButton variant="secondary">Aplicar margem</SubmitButton>
     </ActionForm>
   );
 }

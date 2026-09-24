@@ -48,6 +48,7 @@ export default async function ItemPage({ params, searchParams }: { params: Promi
         showComparison={hasPermission(user.permissions, "pricing:approve") || hasPermission(user.permissions, "pricing:params")}
         trees={trees}
         initialTreeIds={item?.trees.map((t) => t.id)}
+        estimateMargin={est.marginOverride?.toString() ?? null}
       />
     </>
   );

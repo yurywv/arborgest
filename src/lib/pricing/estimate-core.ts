@@ -88,6 +88,7 @@ export async function recomputeEstimate(tx: Tx, estimateId: string) {
       marginOverride: it.marginOverride?.toString() ?? null,
       extraCost: it.extraCost.toString(),
       priceOverride: it.priceOverride?.toString() ?? null,
+      estimateMargin: est.marginOverride?.toString() ?? null,
     });
     await tx.pricingEstimateItem.update({
       where: { id: it.id },

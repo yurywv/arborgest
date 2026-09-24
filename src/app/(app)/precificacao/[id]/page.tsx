@@ -18,7 +18,7 @@ import { getProposalTexts } from "@/lib/pricing/proposal-texts-server";
 import { ActionButton } from "@/components/form";
 import { Badge, Card, DataList, EmptyState, LinkButton, PageHeader, TabLinks } from "@/components/ui";
 import { createContractFromEstimate, deleteEstimate, deleteItem, duplicateEstimate, requestApproval } from "../actions";
-import { AdjustItem, ApprovalDecision, DiscountForm, RepriceButton, StatusButton, WorkOrderForm } from "./controls";
+import { AdjustItem, ApprovalDecision, DiscountForm, EstimateMarginForm, RepriceButton, StatusButton, WorkOrderForm } from "./controls";
 import { ProposalForm, SendProposalForm } from "./proposta/forms";
 import { EstimateForm } from "../estimate-form";
 
@@ -71,6 +71,7 @@ export default async function EstimatePage({ params, searchParams }: { params: P
   const flow = params_.approval.fluxoObrigatorio;
   const canProposal = e.items.length > 0 && (flow ? ["APROVADO_INTERNAMENTE", "ENVIADO_CLIENTE", "EM_NEGOCIACAO"] : ["EM_ELABORACAO", "APROVADO_INTERNAMENTE", "ENVIADO_CLIENTE", "EM_NEGOCIACAO"]).includes(e.status);
   const currentProposal = e.proposals.find((p) => ["EMITIDA", "ENVIADA", "ACEITA"].includes(p.status));
+  const defaultMarginPct = dec(params_.general.margem).mul(100).toString().replace(".", ",");
 
   return (
     <>
@@ -128,6 +129,7 @@ export default async function EstimatePage({ params, searchParams }: { params: P
                               {costs && <Badge>Custo {fmtBRL(i.operationalCost.toString())}</Badge>}
                               {costs && <Badge tone={Number(i.effectiveMargin) >= Number(params_.approval.margemComercial) - 1e-4 ? "green" : Number(i.effectiveMargin) >= Number(params_.approval.margemGerencial) ? "yellow" : "red"}>Margem {fmtPct(i.effectiveMargin.toString())}</Badge>}
                               {i.marginOverride && <Badge tone="violet">Margem ajustada {fmtPct(i.marginOverride.toString())}</Badge>}
+                              {costs && !i.marginOverride && !i.priceOverride && e.marginOverride && <Badge tone="violet">Margem do orçamento {fmtPct(e.marginOverride.toString())}</Badge>}
                               {Number(i.extraCost) > 0 && <Badge tone="violet">+ {fmtBRL(i.extraCost.toString())} custo</Badge>}
                               {i.priceOverride && <Badge tone="violet">Preço definido manualmente</Badge>}
                             </div>
@@ -238,6 +240,16 @@ export default async function EstimatePage({ params, searchParams }: { params: P
               </Card>
             )}
 
+            {can("pricing:negotiate") && editable && (
+              <Card title="Margem de lucro">
+                <p className="mb-3 text-sm text-stone-600">
+                  Vigente: <b>{e.marginOverride ? fmtPct(e.marginOverride.toString()) : `${defaultMarginPct}% (padrão dos parâmetros)`}</b>
+                  {e.marginReason && <span className="block text-xs text-stone-500">Motivo: {e.marginReason}</span>}
+                </p>
+                <EstimateMarginForm estimateId={e.id} current={e.marginOverride?.toString() ?? null} defaultPct={defaultMarginPct} />
+              </Card>
+            )}
+
             {can("pricing:negotiate") && editable && e.items.length > 0 && (
               <Card title="Desconto no orçamento">
                 <DiscountForm estimateId={e.id} type={e.discountType} value={e.discountValue?.toString() ?? null} reason={e.discountReason} alert={fmtPct(params_.approval.descontoAlerta)} />
@@ -254,6 +266,7 @@ export default async function EstimatePage({ params, searchParams }: { params: P
                 ["Responsável comercial", e.commercialOwner?.name],
                 ["Responsável técnico", e.technicalOwner?.name],
                 ["Parâmetros", `v${e.parameterVersion.label} — ${ENGINE_LABEL[e.parameterVersion.engineVersion]}`],
+                ...(costs ? [["Margem de lucro", e.marginOverride ? `${fmtPct(e.marginOverride.toString())} (definida no orçamento)` : `${defaultMarginPct}% (padrão)`] as [string, React.ReactNode]] : []),
                 ["Criado por", `${e.createdBy?.name ?? "—"} em ${fmtDateTime(e.createdAt)}`],
                 ...(e.parent ? [["Revisão de", <Link key="p" className="link" href={`/precificacao/${e.parent.id}`}>{e.parent.number}</Link>] as [string, React.ReactNode]] : []),
                 ...(e.revisions.length ? [["Revisões", e.revisions.map((r) => <Link key={r.id} className="link mr-2" href={`/precificacao/${r.id}`}>{r.number}</Link>)] as [string, React.ReactNode]] : []),

@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { LEGACY_EXCEL_PARAMS as P } from "../defaults";
 import { dec } from "../decimal";
-import { adjustedItemPrice, effectiveMargin, estimateTotals, grantableLevel, levelCovers, requiredApprovalLevel } from "../policy";
+import { adjustedItemPrice, assertNonNegativeMargin, effectiveMargin, estimateTotals, grantableLevel, levelCovers, requiredApprovalLevel, validateMargin } from "../policy";
 import { calculate } from "../registry";
 
 const inv = calculate("INVENTARIO", { trees: 350, distanceKm: 120, difficulty: 2, auxiliaries: 3, lodging: false, toll: 45 }, P).result;
@@ -86,5 +86,33 @@ describe("Snapshot", () => {
   it("hash independe da ordem das chaves (jsonb)", async () => {
     const { snapshotHash } = await import("../estimate-core");
     expect(snapshotHash({ b: 1, a: { d: [1, { y: 2, x: 1 }], c: "z" } })).toBe(snapshotHash({ a: { c: "z", d: [1, { x: 1, y: 2 }] }, b: 1 }));
+  });
+});
+
+describe("Margem de lucro do orçamento", () => {
+  it("aplica a margem do orçamento aos itens sem margem própria", () => {
+    const r = adjustedItemPrice(inv, { estimateMargin: "0.30" });
+    expect(r.price.toNumber()).toBeCloseTo(Number(inv.operationalCost) / 0.7 / 0.89, 2);
+    expect(r.margin.toNumber()).toBeCloseTo(0.30, 4);
+    expect(r.marginSource).toBe("ORCAMENTO");
+  });
+  it("margem do item e preço definido prevalecem sobre a do orçamento", () => {
+    expect(adjustedItemPrice(inv, { estimateMargin: "0.30", marginOverride: "0.40" }).margin.toNumber()).toBeCloseTo(0.40, 4);
+    expect(adjustedItemPrice(inv, { estimateMargin: "0.30", priceOverride: "40000" }).price.toNumber()).toBe(40000);
+  });
+  it("na poda legada, a margem do orçamento passa a ser aplicada (fórmula padronizada)", () => {
+    const r = adjustedItemPrice(podaLegacy, { estimateMargin: "0.35" });
+    expect(r.margin.toNumber()).toBeCloseTo(0.35, 4);
+  });
+  it("margem 0% é aceita; negativa ou ≥ 100% é rejeitada", () => {
+    expect(adjustedItemPrice(inv, { estimateMargin: "0" }).margin.toNumber()).toBeCloseTo(0, 4);
+    expect(() => adjustedItemPrice(inv, { estimateMargin: "-0.05" })).toThrow(/negativa/);
+    expect(() => adjustedItemPrice(inv, { marginOverride: "-0.01" })).toThrow(/negativa/);
+    expect(() => validateMargin(dec(1))).toThrow(/menor que 100%/);
+  });
+  it("bloqueia ajustes que resultem em margem efetiva negativa", () => {
+    const cheap = adjustedItemPrice(inv, { priceOverride: "1000" });
+    expect(() => assertNonNegativeMargin(cheap.margin, "Este ajuste")).toThrow(/margem negativa/);
+    expect(() => assertNonNegativeMargin(dec("-0.00001"), "Arredondamento")).not.toThrow(); // tolerância de centavos
   });
 });

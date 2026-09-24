@@ -9,7 +9,7 @@ import { nextContractNumber, nextWorkOrderNumber } from "@/lib/counters";
 import { finish, formObject, optDate, optId, optStr, reqStr, runAction, UserError } from "@/lib/actions";
 import type { ActionState } from "@/lib/action-state";
 import { dec, fmtPct } from "@/lib/pricing/decimal";
-import { APPROVAL_LABEL, grantableLevel, levelCovers, type ApprovalLevelCode } from "@/lib/pricing/policy";
+import { APPROVAL_LABEL, assertNonNegativeMargin, grantableLevel, levelCovers, validateMargin, type ApprovalLevelCode } from "@/lib/pricing/policy";
 import { SERVICES, isServiceCode } from "@/lib/pricing/registry";
 import {
   EDITABLE_STATUSES, calcResultOf, getActiveVersion, nextEstimateNumber, paramsOf, persistCalculation, pricingAudit,
@@ -39,6 +39,20 @@ async function invalidateApproval(tx: Tx, est: { id: string; status: PricingEsti
     await pricingAudit(tx, userId, "APROVACAO_INVALIDADA", "PricingEstimate", est.id, { estimateId: est.id, field: "status", previousValue: est.status, newValue: next, justification: reason });
   }
   if (next !== est.status) await tx.pricingEstimate.update({ where: { id: est.id }, data: { status: next } });
+}
+
+/** Nenhum ajuste pode deixar margem negativa — nem em um item nem no total do orçamento. */
+async function assertMargins(tx: Tx, estimateId: string, what: string) {
+  const [est, items] = await Promise.all([
+    tx.pricingEstimate.findUniqueOrThrow({ where: { id: estimateId }, select: { effectiveMargin: true } }),
+    tx.pricingEstimateItem.findMany({ where: { estimateId }, select: { effectiveMargin: true, serviceCode: true, priceOverride: true, marginOverride: true, extraCost: true } }),
+  ]);
+  for (const i of items) {
+    // Preço calculado pelo motor sem ajustes (ex.: poda legada ≈ 0%) não é bloqueado; só ajustes manuais.
+    const adjusted = i.priceOverride !== null || i.marginOverride !== null || Number(i.extraCost) > 0;
+    if (adjusted) assertNonNegativeMargin(dec(i.effectiveMargin.toString()), `${what} (${SERVICES[i.serviceCode as keyof typeof SERVICES]?.shortName ?? i.serviceCode})`);
+  }
+  if (est.effectiveMargin !== null) assertNonNegativeMargin(dec(est.effectiveMargin.toString()), what);
 }
 
 // ───────────────────────── Cabeçalho ─────────────────────────
@@ -77,6 +91,13 @@ export async function createEstimate(_: ActionState, fd: FormData): Promise<Acti
     const user = await assertPermission("pricing:write");
     const d = headerSchema.parse(formObject(fd));
     await checkLinks(d);
+    const marginRaw = String(fd.get("marginPercent") ?? "").trim();
+    let margin: ReturnType<typeof dec> | null = null;
+    if (marginRaw) {
+      if (!user.permissions.includes("pricing:negotiate")) throw new UserError("Sem permissão para definir a margem de lucro.");
+      try { margin = validateMargin(pct(marginRaw)!, "Margem de lucro"); }
+      catch (e) { return { ok: false, message: (e as Error).message, errors: { marginPercent: (e as Error).message } }; }
+    }
     const version = await getActiveVersion();
     const number = await nextEstimateNumber();
     const validUntil = d.validUntil ?? new Date(Date.now() + 30 * 86_400_000);
@@ -86,9 +107,11 @@ export async function createEstimate(_: ActionState, fd: FormData): Promise<Acti
           ...d, number, validUntil, parameterVersionId: version.id, createdById: user.id,
           commercialOwnerId: d.commercialOwnerId ?? (user.permissions.includes("pricing:negotiate") ? user.id : null),
           taxRate: paramsOf(version).general.imposto,
+          ...(margin && { marginOverride: margin.toDecimalPlaces(6).toString(), marginReason: "Margem de lucro definida na criação do orçamento" }),
         },
       });
       id = e.id;
+      if (margin) await pricingAudit(tx, user.id, "ALTERACAO_MARGEM", "PricingEstimate", e.id, { estimateId: e.id, field: "margemOrcamento", previousValue: paramsOf(version).general.margem, newValue: margin.toString(), justification: "Definida na criação" });
       await pricingAudit(tx, user.id, "CRIACAO", "PricingEstimate", e.id, { estimateId: e.id, newValue: { number, versao: version.label } });
     });
     await audit(user.id, "CREATE", "PricingEstimate", id, number);
@@ -215,11 +238,13 @@ export async function adjustItem(estimateId: string, itemId: string, _: ActionSt
   return runAction(async () => {
     const user = await assertPermission("pricing:negotiate");
     const f = formObject(fd);
-    const reason = z.string().trim().min(5, "Informe o motivo (mínimo 5 caracteres).").max(1000).parse(f.reason ?? "");
+    const reasonParsed = z.string().trim().min(5, "Informe o motivo (mínimo 5 caracteres).").max(1000).safeParse(f.adjustReason ?? "");
+    if (!reasonParsed.success) return { ok: false, message: "Informe o motivo.", errors: { adjustReason: reasonParsed.error.issues[0].message } };
+    const reason = reasonParsed.data;
     const margin = pct(f.marginOverride);
     const extra = brl(f.extraCost) ?? dec(0);
     const price = brl(f.priceOverride);
-    if (margin && (margin.lt(0) || margin.gte(1))) throw new UserError("Margem deve estar entre 0% e 99,99%.");
+    if (margin) validateMargin(margin, "Margem do item");
     if (extra.lt(0)) throw new UserError("Custo adicional não pode ser negativo.");
     if (price && price.lte(0)) throw new UserError("Preço final deve ser maior que zero.");
     // Margem abaixo da alçada de quem ajusta é permitida, mas o orçamento passa a exigir aprovação superior.
@@ -241,6 +266,7 @@ export async function adjustItem(estimateId: string, itemId: string, _: ActionSt
         },
       });
       await recomputeEstimate(tx, estimateId);
+      await assertMargins(tx, estimateId, "Este ajuste");
       const after = await tx.pricingEstimateItem.findUniqueOrThrow({ where: { id: it.id } });
       for (const c of changes) {
         await tx.pricingOverride.create({
@@ -277,6 +303,7 @@ export async function setDiscount(estimateId: string, _: ActionState, fd: FormDa
         data: { discountType: value && !value.isZero() ? type : null, discountValue: value && !value.isZero() ? value.toString() : null, discountReason: value && !value.isZero() ? reason : null },
       });
       const after = await recomputeEstimate(tx, estimateId);
+      await assertMargins(tx, estimateId, "Este desconto");
       const pctOff = dec(after.itemsTotal.toString()).isZero() ? dec(0) : dec(after.discountAmount.toString()).div(dec(after.itemsTotal.toString()));
       if (pctOff.gt(dec(params.approval.descontoAlerta)) && f.confirmDiscount !== "on")
         throw new UserError(`Desconto de ${fmtPct(pctOff)} acima do limite de alerta (${fmtPct(params.approval.descontoAlerta)}). Marque a confirmação para prosseguir.`);
@@ -293,6 +320,45 @@ export async function setDiscount(estimateId: string, _: ActionState, fd: FormDa
       });
       await invalidateApproval(tx, est, user.id, "Desconto alterado");
     });
+  });
+}
+
+/** Margem de lucro do orçamento (aplicada a todos os itens sem margem/preço próprios). Nunca negativa. */
+export async function setEstimateMargin(estimateId: string, _: ActionState, fd: FormData): Promise<ActionState> {
+  return runAction(async (): Promise<ActionState> => {
+    const user = await assertPermission("pricing:negotiate");
+    const raw = String(fd.get("marginPercent") ?? "").trim();
+    const reason = String(fd.get("marginReason") ?? "").trim();
+    let margin: ReturnType<typeof dec> | null = null;
+    if (raw) {
+      try { margin = validateMargin(pct(raw)!, "Margem de lucro"); }
+      catch (e) { return { ok: false, message: (e as Error).message, errors: { marginPercent: (e as Error).message } }; }
+    }
+    if (reason.length < 5) return { ok: false, message: "Informe o motivo.", errors: { marginReason: "Informe o motivo (mínimo 5 caracteres)." } };
+    await db.$transaction(async (tx) => {
+      const est = await loadEditable(tx, estimateId);
+      const prev = est.marginOverride?.toString() ?? null;
+      const next = margin ? margin.toDecimalPlaces(6).toString() : null;
+      if ((prev === null ? null : dec(prev).toString()) === (next === null ? null : dec(next).toString())) throw new UserError("A margem informada é igual à atual.");
+      const beforeTotals = { itens: est.itemsTotal.toString(), total: est.negotiatedTotal.toString() };
+      await tx.pricingEstimate.update({ where: { id: estimateId }, data: { marginOverride: next, marginReason: next ? reason : null } });
+      const after = await recomputeEstimate(tx, estimateId);
+      await assertMargins(tx, estimateId, "Esta margem");
+      await tx.pricingOverride.create({
+        data: {
+          estimateId, type: "MARGEM", previousValue: prev, newValue: next, reason, userId: user.id,
+          calculatedPrice: after.calculatedTotal, negotiatedPrice: after.itemsTotal,
+          difference: dec(after.itemsTotal.toString()).minus(dec(beforeTotals.itens)).toString(),
+        },
+      });
+      await pricingAudit(tx, user.id, "ALTERACAO_MARGEM", "PricingEstimate", estimateId, {
+        estimateId, field: "margemOrcamento",
+        previousValue: { margem: prev ?? `padrão (${paramsOf(est.parameterVersion).general.margem})`, total: beforeTotals.total },
+        newValue: { margem: next ?? "padrão dos parâmetros", total: after.negotiatedTotal.toString() }, justification: reason,
+      });
+      await invalidateApproval(tx, est, user.id, "Margem de lucro do orçamento alterada");
+    });
+    return { ok: true, message: margin ? `Margem de lucro de ${fmtPct(margin)} aplicada.` : "Margem do orçamento removida (volta ao padrão)." };
   });
 }
 
@@ -452,6 +518,7 @@ export async function duplicateEstimate(id: string, mode: "copy" | "revision"): 
           propertyId: src.propertyId, opportunityId: src.opportunityId, validUntil: new Date(Date.now() + 30 * 86_400_000),
           commercialOwnerId: src.commercialOwnerId, technicalOwnerId: src.technicalOwnerId, internalNotes: src.internalNotes,
           commercialNotes: src.commercialNotes, parameterVersionId: version.id, createdById: user.id, status: "EM_ELABORACAO",
+          marginOverride: src.marginOverride, marginReason: src.marginReason,
           taxRate: paramsOf(version).general.imposto,
         },
       });
@@ -460,7 +527,7 @@ export async function duplicateEstimate(id: string, mode: "copy" | "revision"): 
       await recomputeEstimate(tx, e.id);
       await pricingAudit(tx, user.id, mode === "revision" ? "REVISAO" : "DUPLICACAO", "PricingEstimate", e.id, {
         estimateId: e.id, previousValue: src.number, newValue: { number, versaoParametros: version.label },
-        justification: "Itens recalculados com os parâmetros vigentes; ajustes e descontos não são copiados.",
+        justification: `Itens recalculados com os parâmetros vigentes; ajustes de itens e descontos não são copiados${src.marginOverride ? `; margem do orçamento (${fmtPct(src.marginOverride.toString())}) mantida` : ""}.`,
       });
       if (mode === "revision" && (EDITABLE_STATUSES as readonly string[]).includes(src.status)) {
         await tx.pricingEstimate.update({ where: { id: src.id }, data: { status: "CANCELADO", closeReason: `Substituído pela revisão ${number}` } });

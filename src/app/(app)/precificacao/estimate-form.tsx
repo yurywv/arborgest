@@ -8,8 +8,10 @@ import { createEstimate, updateEstimateHeader } from "./actions";
 
 type Linked = Option & { clientId: string };
 
-export function EstimateForm({ estimate, clients, properties, contacts, opportunities, users, defaults }: {
+export function EstimateForm({ estimate, clients, properties, contacts, opportunities, users, defaults, margin }: {
   estimate?: PricingEstimate; clients: Option[]; properties: Linked[]; contacts: Linked[]; opportunities: Linked[]; users: Option[];
+  /** Presente quando o usuário pode definir a margem (criação). defaultPct = margem padrão dos parâmetros, em %. */
+  margin?: { defaultPct: string };
   defaults?: { clientId?: string; propertyId?: string; opportunityId?: string; contactId?: string; title?: string };
 }) {
   const e: Partial<PricingEstimate> = estimate ?? {};
@@ -26,6 +28,12 @@ export function EstimateForm({ estimate, clients, properties, contacts, opportun
         <SelectField key={`o-${clientId}`} name="opportunityId" label="Oportunidade" options={of(opportunities)} defaultValue={e.opportunityId ?? defaults?.opportunityId} placeholder={clientId ? "Sem oportunidade" : "Selecione o cliente"} disabled={!clientId} />
         <Field name="validUntil" label="Validade" type="date" defaultValue={toInputDate(validDefault)} />
       </FormSection>
+      {margin && !estimate && (
+        <FormSection title="Margem de lucro" description="Aplicada a todos os serviços deste orçamento e das propostas emitidas a partir dele.">
+          <Field name="marginPercent" label="Margem de lucro (%)" inputMode="decimal" placeholder={margin.defaultPct} suffix="%"
+            hint={`Em branco = margem padrão (${margin.defaultPct}%). Não pode ser negativa; sempre menor que 100%. Margem sobre o preço de venda.`} />
+        </FormSection>
+      )}
       <FormSection title="Responsáveis">
         <SelectField name="commercialOwnerId" label="Responsável comercial" options={users} defaultValue={e.commercialOwnerId} placeholder="Eu mesmo" />
         <SelectField name="technicalOwnerId" label="Responsável técnico" options={users} defaultValue={e.technicalOwnerId} placeholder="—" />

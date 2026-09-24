@@ -10,6 +10,7 @@ import { AlertTriangle, Calculator, ChevronDown, Loader2, Save, TreePine, Zap } 
 import { SERVICES, calculate, type FieldDef } from "@/lib/pricing/registry";
 import { fmtBRL, fmtN, fmtPct } from "@/lib/pricing/decimal";
 import { toPureLegacy, toV2 } from "@/lib/pricing/defaults";
+import { adjustedItemPrice } from "@/lib/pricing/policy";
 import type { CalcResult, Difficulty, PricingParams, ServiceCode } from "@/lib/pricing/types";
 import { DIFFICULTY_LABEL } from "@/lib/pricing/types";
 import { TreePicker, type PickerTree } from "./tree-picker";
@@ -53,6 +54,8 @@ export type SimulatorProps = {
   initialTreeIds?: string[];
   onSave?: (payload: { service: ServiceCode; inputs: Record<string, unknown>; description: string; treeIds: string[]; confirmWarnings: boolean; clientPrice: string }) => Promise<{ ok: boolean; message?: string } | null | void>;
   saveLabel?: string;
+  /** Margem de lucro definida no orçamento (fração) — mostra o preço que irá para a proposta. */
+  estimateMargin?: string | null;
 };
 
 export function PricingSimulator(props: SimulatorProps) {
@@ -187,6 +190,16 @@ export function PricingSimulator(props: SimulatorProps) {
                   <div className="text-sm text-brand-800">{fmtBRL(result.unitPriceRounded)} por árvore</div>
                   {canSeeCosts && <div className="mt-1 text-xs text-brand-700">Margem efetiva {fmtPct(result.effectiveMargin)}</div>}
                 </div>
+                {props.estimateMargin && (() => {
+                  const adj = adjustedItemPrice(result, { estimateMargin: props.estimateMargin });
+                  return (
+                    <div className="rounded-xl border border-violet-200 bg-violet-50 p-3 text-center text-violet-900">
+                      <div className="text-xs font-semibold uppercase">Na proposta, com a margem do orçamento{canSeeCosts ? ` (${fmtPct(props.estimateMargin)})` : ""}</div>
+                      <div data-testid="preco-com-margem" className="text-xl font-bold tabular-nums">{fmtBRL(adj.price)}</div>
+                      <div className="text-xs">{fmtBRL(adj.price.div(Number(effective.trees) || 1))} por árvore</div>
+                    </div>
+                  );
+                })()}
                 {result.warnings.length > 0 && (
                   <ul className="space-y-1.5">
                     {result.warnings.map((w) => (

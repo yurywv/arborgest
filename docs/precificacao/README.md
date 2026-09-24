@@ -25,6 +25,14 @@ CRM → Cliente → Propriedade → Oportunidade → Precificar
 
 Botões **Precificar** também aparecem na oportunidade (funil e edição), na propriedade e na aba **Orçamentos** do cliente. A busca global encontra orçamentos por número, título ou número de proposta.
 
+## Margem de lucro do orçamento
+
+- Cada orçamento pode ter sua **margem de lucro (%)**, definida na criação ou no cartão *Margem de lucro* (permissão `pricing:negotiate`, motivo obrigatório, auditada). Em branco, vale a margem padrão dos parâmetros.
+- Aplica-se a todos os itens sem margem ou preço próprios: preço = custo ÷ (1 − margem) ÷ (1 − imposto) — inclusive na poda legada, que passa a ter margem. Margem do item e preço definido manualmente prevalecem.
+- **Margens negativas não são aceitas** (margem ≥ 0% e < 100%), e nenhum ajuste de item ou desconto pode deixar a margem efetiva de um item ajustado ou do orçamento negativa (tolerância de 0,01% para o arredondamento a centavos).
+- O preço calculado pelo motor é preservado; a mudança fica em `PricingOverride` e na trilha de auditoria, e invalida aprovações já concedidas. Duplicação e revisão mantêm a margem do orçamento.
+- O simulador do item mostra o preço que irá para a proposta com a margem do orçamento.
+
 ## Estados do orçamento
 
 `Rascunho → Em elaboração → Em aprovação interna → Aprovado internamente → Enviado ao cliente → Em negociação → Aceito | Recusado`, além de `Cancelado` e `Expirado` (validade vencida; verificado no acesso e no cron diário).
@@ -118,4 +126,4 @@ Orçamentos, propostas, PDF, auditoria, indicadores e integração com CRM/OS s�
 | `npm run pricing:parity` | Regera `src/lib/pricing/parity/excel-results.json` recalculando a planilha **no Microsoft Excel** (macOS) |
 | `npx tsx scripts/pricing-parity/report.mts` | Regera o relatório `validacao-logica-legada.md` |
 | `npm run test:smoke` | Todas as rotas (inclusive precificação) com cada perfil |
-| `npm run test:e2e:pricing` | Fluxo completo no navegador (30 verificações), inclusive celular e permissões |
+| `npm run test:e2e:pricing` | Fluxo completo no navegador (33 verificações), inclusive margem do orçamento, celular e permissões |
