@@ -5,7 +5,7 @@ import { Pencil, Plus, Trash2, Navigation, Calculator } from "lucide-react";
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/auth/session";
 import { hasPermission } from "@/lib/auth/permissions";
-import { CONTRACT_STATUS, PROPERTY_TYPES, labelOf } from "@/lib/catalogs";
+import { CONTRACT_STATUS, PROPERTY_OWNERSHIP, PROPERTY_TYPES, labelOf } from "@/lib/catalogs";
 import { fmtDate, fmtMoney, fmtNum } from "@/lib/format";
 import { navLinks } from "@/lib/arbo";
 import { loadMapPoints } from "@/lib/tree-points";
@@ -56,7 +56,7 @@ export default async function PropertyDetail({ params, searchParams }: { params:
       <PageHeader
         back={{ href: "/propriedades", label: "Propriedades" }}
         title={p.name}
-        subtitle={<><Link className="link" href={`/clientes/${p.clientId}`}>{p.client.tradeName ?? p.client.legalName}</Link> · {labelOf(PROPERTY_TYPES, p.propertyType)}{!p.active && " · Inativa"}</>}
+        subtitle={<><Link className="link" href={`/clientes/${p.clientId}`}>{p.client.tradeName ?? p.client.legalName}</Link> · {p.ownership ? `Propriedade ${labelOf(PROPERTY_OWNERSHIP, p.ownership).toLowerCase()}` : "Pública/privada não informada"} · {labelOf(PROPERTY_TYPES, p.propertyType)}{!p.active && " · Inativa"}</>}
         actions={
           <>
             {can("trees:write") && <LinkButton href={`/arvores/novo?propertyId=${id}`} variant="primary" icon={Plus}>Nova árvore</LinkButton>}

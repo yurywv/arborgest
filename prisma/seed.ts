@@ -175,10 +175,24 @@ async function main() {
       { clientId: c4.id, description: "Inventário arbóreo e laudo de risco do campus", service: "INVENTARIO", estimatedValue: 18500, stage: "PROPOSTA", probability: 50, ownerId: comercial.id, expectedDate: daysAhead(20), source: "INDICACAO" },
       { clientId: c2.id, description: "Ampliação do contrato para o CD Sumaré", service: "MANEJO", estimatedValue: 42000, stage: "NEGOCIACAO", probability: 75, ownerId: comercial.id, expectedDate: daysAhead(35), source: "CLIENTE_ATUAL" },
       { clientId: c3.id, description: "Plantio compensatório — Parque Linear", service: "PLANTIO", estimatedValue: 27000, stage: "QUALIFICACAO", probability: 20, ownerId: gestor.id, expectedDate: daysAhead(60), source: "LICITACAO" },
-      { clientId: c1.id, description: "Tomografia das paineiras do bloco A", service: "LAUDO", estimatedValue: 6800, stage: "GANHA", probability: 100, ownerId: comercial.id, expectedDate: daysAgo(15), source: "CLIENTE_ATUAL" },
+      { clientId: c1.id, description: "Tomografia das paineiras do bloco A", service: "AVALIACAO_RISCO", estimatedValue: 6800, stage: "GANHA", probability: 100, ownerId: comercial.id, expectedDate: daysAgo(15), source: "CLIENTE_ATUAL" },
       { clientId: c4.id, description: "Poda de elevação na quadra", service: "PODA", estimatedValue: 4200, stage: "LEAD", probability: 10, ownerId: comercial.id, source: "SITE" },
       { clientId: c3.id, description: "Remoção emergencial pós-tempestade", service: "REMOCAO", estimatedValue: 9500, stage: "PERDIDA", probability: 0, ownerId: gestor.id, expectedDate: daysAgo(40), source: "PROSPECCAO" },
       { clientId: c2.id, description: "Visita técnica — área verde 3", service: "CONSULTORIA", estimatedValue: 3500, stage: "VISITA", probability: 35, ownerId: comercial.id, expectedDate: daysAhead(10), source: "CLIENTE_ATUAL" },
+    ],
+  });
+
+  // Log de ações junto ao cliente nas oportunidades em andamento.
+  const oppAmp = await db.opportunity.findFirstOrThrow({ where: { description: "Ampliação do contrato para o CD Sumaré" } });
+  const c2Contacts = await db.contact.findMany({ where: { clientId: c2.id }, orderBy: { name: "asc" } });
+  const c2Pat = c2Contacts.find((c) => c.name.startsWith("Patrícia"));
+  const c2Luc = c2Contacts.find((c) => c.name.startsWith("Luciana"));
+  await db.opportunityActivity.createMany({
+    data: [
+      { opportunityId: oppAmp.id, type: "PRIMEIRO_CONTATO", occurredAt: daysAgo(30), contactId: c2Pat?.id, userId: comercial.id, description: "Cliente solicitou ampliação do manejo para o CD Sumaré." },
+      { opportunityId: oppAmp.id, type: "VISITA_PRESENCIAL", occurredAt: daysAgo(24), contactId: c2Pat?.id, userId: comercial.id, description: "Visita ao CD com levantamento preliminar: ~150 exemplares, 7 com risco alto no estacionamento." },
+      { opportunityId: oppAmp.id, type: "VIDEOCONFERENCIA", occurredAt: daysAgo(15), contactId: c2Luc?.id, userId: comercial.id, description: "Alinhamento com compras sobre escopo, prazos e forma de pagamento." },
+      { opportunityId: oppAmp.id, type: "WHATSAPP", occurredAt: daysAgo(3), contactId: c2Luc?.id, userId: comercial.id, description: "Cliente pediu revisão do desconto; em análise." },
     ],
   });
 
@@ -199,7 +213,7 @@ async function main() {
   for (const p of propDefs) {
     const prop = await db.property.create({
       data: {
-        clientId: p.client.id, name: p.name, propertyType: p.type, latitude: p.lat, longitude: p.lng, city: p.city, state: "SP",
+        clientId: p.client.id, name: p.name, propertyType: p.type, ownership: ["PARQUE", "PRACA", "VIA_PUBLICA"].includes(p.type) ? "PUBLICA" : "PRIVADA", latitude: p.lat, longitude: p.lng, city: p.city, state: "SP",
         district: p.district, address: p.address, number: p.number, localManager: p.manager, totalArea: p.area,
         sectors: { create: p.sectors.map(([name, lat, lng]) => ({ name: name as string, latitude: lat as number, longitude: lng as number, approxArea: between(800, 6000, 0) })) },
       },
@@ -341,7 +355,7 @@ async function main() {
         number: `OS-${year}-${String(i + 1).padStart(4, "0")}`, clientId: ts[0].clientId, propertyId: ts[0].propertyId,
         trees: { connect: ts.map((t) => ({ id: t.id })) }, service: d.service, description: `Serviço de ${d.service.toLowerCase().replaceAll("_", " ")} nos exemplares ${ts.map((t) => t.code).join(", ")}.`,
         priority: d.prio, scheduledAt: daysAhead(d.sched), executedAt: "exec" in d ? daysAhead(d.exec) : null,
-        teamId: i % 2 ? teamB.id : teamA.id, responsibleId: i % 2 ? tecnico.id : operacional.id, status: d.status, cost: d.cost,
+        teamId: i % 2 ? teamB.id : teamA.id, responsibleId: i % 2 ? tecnico.id : operacional.id, status: d.status, cost: d.cost, origin: "AVULSO",
       },
     });
     workOrders.push({ wo, trees: ts, def: d });

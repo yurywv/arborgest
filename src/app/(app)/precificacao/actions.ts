@@ -175,7 +175,7 @@ export async function saveItem(estimateId: string, itemId: string | null, payloa
 
     // Árvores selecionadas: precisam ser da propriedade (ou do cliente) do orçamento.
     let treeIds: string[] = [];
-    if (p.treeIds.length) {
+    if (p.treeIds.length && SERVICES[service].perTree) {
       const trees = await db.tree.findMany({
         where: { id: { in: p.treeIds }, ...(est.propertyId ? { propertyId: est.propertyId } : { property: { clientId: est.clientId } }) },
         select: { id: true },
@@ -187,7 +187,7 @@ export async function saveItem(estimateId: string, itemId: string | null, payloa
 
     // Cálculo no servidor, com a versão de parâmetros DO ORÇAMENTO (não a vigente).
     const { params, inputs, result } = serverCalculate(est.parameterVersion, service, p.inputs);
-    if (inputs.trees < 1) throw new UserError("Informe ao menos 1 árvore.");
+    if (inputs.trees < 1) throw new UserError(SERVICES[service].perTree ? "Informe ao menos 1 árvore." : "Informe a quantidade.");
     const confirm = result.warnings.filter((w) => w.level === "confirm");
     if (confirm.length && !p.confirmWarnings)
       throw new UserError(`Confirme os valores fora do padrão antes de salvar: ${confirm.map((w) => w.message).join(" ")}`);
@@ -641,7 +641,7 @@ export async function createContractFromEstimate(id: string): Promise<ActionStat
     const est = await db.pricingEstimate.findUniqueOrThrow({ where: { id }, include: { items: { orderBy: { order: "asc" } }, contracts: true } });
     if (est.status !== "ACEITO") throw new UserError("Crie o contrato após o aceite do cliente.");
     if (est.contracts.length) throw new UserError(`Já existe contrato vinculado (${est.contracts[0].number}).`);
-    const object = est.items.map((i) => `${SERVICES[i.serviceCode as keyof typeof SERVICES]?.name ?? i.serviceCode} — ${i.quantity} árvore(s)`).join("; ");
+    const object = est.items.map((i) => { const d = SERVICES[i.serviceCode as keyof typeof SERVICES]; return `${d?.name ?? i.serviceCode} — ${i.quantity} ${i.quantity === 1 ? d?.unit ?? "un" : d?.unitPlural ?? "un"}`; }).join("; ");
     const number = await nextContractNumber();
     await db.$transaction(async (tx) => {
       const c = await tx.contract.create({
@@ -668,6 +668,7 @@ export async function createWorkOrdersFromEstimate(id: string, _: ActionState, f
     });
     if (est.status !== "ACEITO") throw new UserError("Crie ordens de serviço após o aceite do cliente.");
     if (est.workOrders.length) throw new UserError("Já existem ordens de serviço geradas para este orçamento.");
+    const proposal = await db.commercialProposal.findFirst({ where: { estimateId: id, status: { notIn: ["CANCELADA", "SUBSTITUIDA", "RECUSADA"] } }, orderBy: [{ version: "desc" }], select: { id: true } });
     const numbers: string[] = [];
     for (const it of est.items) {
       const svc = SERVICES[it.serviceCode as keyof typeof SERVICES];
@@ -681,7 +682,8 @@ export async function createWorkOrdersFromEstimate(id: string, _: ActionState, f
           data: {
             number, clientId: est.clientId, propertyId: est.propertyId, service: svc?.osService ?? "MANEJO", priority: "MEDIA", status: "ABERTA",
             scheduledAt, responsibleId: est.technicalOwnerId, pricingEstimateId: est.id,
-            description: [`Orçamento ${est.number} — ${svc?.name ?? it.serviceCode}: ${it.quantity} árvore(s).`, it.description,
+            ...(proposal && { origin: "PROPOSTA", proposalId: proposal.id }),
+            description: [`Orçamento ${est.number} — ${svc?.name ?? it.serviceCode}: ${it.quantity} ${it.quantity === 1 ? svc?.unit ?? "un" : svc?.unitPlural ?? "un"}.`, it.description,
               days ? `Estimativa: ${days} dia(s), ${inputs.auxiliaries ?? 0} auxiliar(es).` : null].filter(Boolean).join("\n"),
             trees: { connect: it.trees.map((t) => ({ id: t.id })) },
           },

@@ -22,7 +22,7 @@ export default async function EditOpportunity({ params }: { params: Promise<{ id
     <div className="mx-auto max-w-3xl">
       <PageHeader
         title="Editar oportunidade"
-        back={{ href: "/oportunidades", label: "Oportunidades" }}
+        back={{ href: `/oportunidades/${id}`, label: "Oportunidade" }}
         actions={<>
           {hasPermission(user.permissions, "pricing:write") && <LinkButton href={`/precificacao/novo?oportunidade=${id}`}>Precificar</LinkButton>}
           {hasPermission(user.permissions, "opportunities:delete") && (

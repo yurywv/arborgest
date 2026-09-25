@@ -26,7 +26,7 @@ const draft = await db.pricingEstimate.findFirst({ where: { status: { in: ["RASC
 
 const pages = [
   "/dashboard", "/clientes", "/clientes/novo", `/clientes/${client.id}`, `/clientes/${client.id}?aba=propriedades`, `/clientes/${client.id}?aba=documentos`, `/clientes/${client.id}/editar`,
-  "/contatos", "/contatos/novo", `/contatos/${contact.id}/editar`, "/oportunidades", "/oportunidades/nova", `/oportunidades/${opp.id}/editar`,
+  "/contatos", "/contatos/novo", `/contatos/${contact.id}/editar`, "/oportunidades", "/oportunidades/nova", `/oportunidades/${opp.id}`, `/oportunidades/${opp.id}/editar`, "/propriedades?identificacao=PUBLICA",
   "/contratos", "/contratos/novo", `/contratos/${contract.id}`, `/contratos/${contract.id}/editar`, `/contratos/${contract.id}/propostas/nova`,
   `/contratos/${ctProposal.contractId}/propostas/${ctProposal.id}`, `/contratos/${ctProposal.contractId}/propostas/nova?de=${ctProposal.id}`, `/clientes/${client.id}?aba=historico`, `/clientes/${client.id}?aba=contratos`,
   "/propriedades", "/propriedades/nova", `/propriedades/${property.id}`, `/propriedades/${property.id}?aba=setores`, `/propriedades/${property.id}?aba=arvores`, `/propriedades/${property.id}/editar`, `/propriedades/${property.id}/setores/${sector.id}`,

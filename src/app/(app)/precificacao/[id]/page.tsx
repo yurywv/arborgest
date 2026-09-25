@@ -122,7 +122,7 @@ export default async function EstimatePage({ params, searchParams }: { params: P
 
             <Card title="Serviços" bodyClassName="p-0">
               {e.items.length === 0 ? (
-                <div className="p-4"><EmptyState title="Nenhum serviço" description="Adicione inventário, supressão ou poda. É possível selecionar árvores da propriedade."
+                <div className="p-4"><EmptyState title="Nenhum serviço" description="Adicione os serviços do orçamento. Nos serviços por árvore é possível selecionar os exemplares da propriedade."
                   action={can("pricing:write") && editable && <LinkButton href={`/precificacao/${e.id}/item`} variant="primary" icon={Plus}>Adicionar serviço</LinkButton>} /></div>
               ) : (
                 <ul className="divide-y divide-stone-100">
@@ -132,7 +132,7 @@ export default async function EstimatePage({ params, searchParams }: { params: P
                       <li key={i.id} className="p-4">
                         <div className="flex flex-wrap items-start justify-between gap-2">
                           <div className="min-w-0">
-                            <div className="font-semibold">{svcName(i.serviceCode)} <span className="font-normal text-stone-500">· {i.quantity} árvore(s){i._count.trees ? " selecionadas" : ""}</span></div>
+                            <div className="font-semibold">{svcName(i.serviceCode)} <span className="font-normal text-stone-500">· {i.quantity} {i.quantity === 1 ? SERVICES[i.serviceCode as ServiceCode]?.unit ?? "un" : SERVICES[i.serviceCode as ServiceCode]?.unitPlural ?? "un"}{i._count.trees ? " selecionadas" : ""}</span></div>
                             {i.description && <div className="text-sm text-stone-600">{i.description}</div>}
                             <div className="mt-1 flex flex-wrap gap-1.5 text-xs">
                               {costs && <Badge>Custo {fmtBRL(i.operationalCost.toString())}</Badge>}
@@ -146,7 +146,7 @@ export default async function EstimatePage({ params, searchParams }: { params: P
                           <div className="text-right">
                             {changed && <div className="text-xs text-stone-400 line-through">{fmtBRL(i.calculatedPrice.toString())}</div>}
                             <div className="text-lg font-bold tabular-nums">{fmtBRL(i.negotiatedPrice.toString())}</div>
-                            <div className="text-xs text-stone-500">{fmtBRL(dec(i.negotiatedPrice.toString()).div(i.quantity || 1).toString())}/árvore</div>
+                            <div className="text-xs text-stone-500">{fmtBRL(dec(i.negotiatedPrice.toString()).div(i.quantity || 1).toString())}/{SERVICES[i.serviceCode as ServiceCode]?.unit ?? "un"}</div>
                           </div>
                         </div>
                         <div className="mt-2 flex flex-wrap gap-1">

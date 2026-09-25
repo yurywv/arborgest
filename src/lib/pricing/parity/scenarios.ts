@@ -3,7 +3,7 @@
  * que grava os resultados calculados pelo próprio Excel em excel-results.json, e (b) no motor v1.
  * O teste src/lib/pricing/__tests__/parity.test.ts compara ambos com tolerância de R$ 0,01.
  */
-import type { InventarioInputs, PodaInputs, ServiceCode, SupressaoInputs } from "../types";
+import type { CoreServiceCode, InventarioInputs, PodaInputs, ServiceCode, SupressaoInputs } from "../types";
 
 export type Scenario =
   | { id: string; title: string; service: "INVENTARIO"; inputs: InventarioInputs }
@@ -55,7 +55,7 @@ export const SCENARIOS: Scenario[] = [
 ];
 
 // ── Mapeamento para as células da planilha ──
-export const SHEET: Record<ServiceCode, string> = { INVENTARIO: "INVENTARIO_V0", SUPRESSAO: "SUPRESSAO_V0", PODA: "PODA_V0" };
+export const SHEET: Record<CoreServiceCode, string> = { INVENTARIO: "INVENTARIO_V0", SUPRESSAO: "SUPRESSAO_V0", PODA: "PODA_V0" };
 
 const MOD_CELLS: Record<"SUPRESSAO" | "PODA", Record<string, string>> = {
   SUPRESSAO: { ALTURA: "E17", REDE_ELETRICA: "E18", ACESSO_DIFICIL: "E19", RESIDUOS_EXTRA: "E20", ANIMAIS: "E21", MATERIAL_UMIDO: "E22", VEGETACAO_INTERFERENTE: "E23", CONCRETO: "E24" },
@@ -79,7 +79,7 @@ export function inputCells(sc: Scenario): Record<string, number> {
 }
 
 /** Células de saída → chave do resultado do motor. */
-export const OUTPUT_CELLS: Record<ServiceCode, Record<string, string>> = {
+export const OUTPUT_CELLS: Record<CoreServiceCode, Record<string, string>> = {
   INVENTARIO: {
     days: "B8", persons: "B9", tecnico: "B12", auxiliares: "B13", deslocamento: "B14", alimentacao: "B15", hospedagem: "B16",
     plaquinhas: "B17", rateioFixo: "B18", operationalCost: "B20", priceBeforeTax: "B22", finalPrice: "B23", unitPrice: "B24",

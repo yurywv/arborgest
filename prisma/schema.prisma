@@ -131,30 +131,31 @@ model User {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  teams                Team[]                    @relation("TeamMembers")
-  resetTokens          PasswordResetToken[]
-  opportunities        Opportunity[]
-  contracts            Contract[]
-  responsibleTrees     Tree[]                    @relation("TreeResponsible")
-  measurements         TreeMeasurement[]
-  inspections          Inspection[]
-  riskAssessments      RiskAssessment[]
-  interventions        Intervention[]
-  workOrders           WorkOrder[]
-  photos               Photo[]
-  documents            Document[]
-  notifications        Notification[]
-  auditLogs            AuditLog[]
-  pricingParamVersions PricingParameterVersion[] @relation("PricingParamAuthor")
-  estimatesCreated     PricingEstimate[]         @relation("EstimateCreator")
-  estimatesCommercial  PricingEstimate[]         @relation("EstimateCommercial")
-  estimatesTechnical   PricingEstimate[]         @relation("EstimateTechnical")
-  pricingCalculations  PricingCalculation[]
-  pricingOverrides     PricingOverride[]
-  proposalsCreated     CommercialProposal[]
-  approvalsRequested   ProposalApproval[]        @relation("ApprovalRequester")
-  approvalsDecided     ProposalApproval[]        @relation("ApprovalDecider")
-  pricingAuditLogs     PricingAuditLog[]
+  teams                 Team[]                    @relation("TeamMembers")
+  resetTokens           PasswordResetToken[]
+  opportunities         Opportunity[]
+  contracts             Contract[]
+  responsibleTrees      Tree[]                    @relation("TreeResponsible")
+  measurements          TreeMeasurement[]
+  inspections           Inspection[]
+  riskAssessments       RiskAssessment[]
+  interventions         Intervention[]
+  workOrders            WorkOrder[]
+  photos                Photo[]
+  documents             Document[]
+  notifications         Notification[]
+  auditLogs             AuditLog[]
+  pricingParamVersions  PricingParameterVersion[] @relation("PricingParamAuthor")
+  estimatesCreated      PricingEstimate[]         @relation("EstimateCreator")
+  estimatesCommercial   PricingEstimate[]         @relation("EstimateCommercial")
+  estimatesTechnical    PricingEstimate[]         @relation("EstimateTechnical")
+  pricingCalculations   PricingCalculation[]
+  pricingOverrides      PricingOverride[]
+  proposalsCreated      CommercialProposal[]
+  approvalsRequested    ProposalApproval[]        @relation("ApprovalRequester")
+  approvalsDecided      ProposalApproval[]        @relation("ApprovalDecider")
+  pricingAuditLogs      PricingAuditLog[]
+  opportunityActivities OpportunityActivity[]
 }
 
 model Team {
@@ -217,22 +218,23 @@ model Client {
 }
 
 model Contact {
-  id               String               @id @default(cuid())
+  id               String                @id @default(cuid())
   clientId         String
-  client           Client               @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  client           Client                @relation(fields: [clientId], references: [id], onDelete: Cascade)
   name             String
-  type             ContactType          @default(GERAL)
+  type             ContactType           @default(GERAL)
   jobTitle         String?
   phone            String?
   mobile           String?
   whatsapp         String?
   email            String?
-  isPrimary        Boolean              @default(false)
+  isPrimary        Boolean               @default(false)
   notes            String?
   pricingEstimates PricingEstimate[]
   proposals        CommercialProposal[]
-  createdAt        DateTime             @default(now())
-  updatedAt        DateTime             @updatedAt
+  activities       OpportunityActivity[]
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
 
   @@index([clientId])
   @@index([type])
@@ -246,49 +248,69 @@ enum ContactType {
 }
 
 model Opportunity {
-  id               String            @id @default(cuid())
+  id               String                @id @default(cuid())
   clientId         String
-  client           Client            @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  client           Client                @relation(fields: [clientId], references: [id], onDelete: Cascade)
   description      String
   service          String?
-  estimatedValue   Decimal?          @db.Decimal(12, 2)
-  stage            OpportunityStage  @default(LEAD)
-  probability      Int               @default(10)
+  estimatedValue   Decimal?              @db.Decimal(12, 2)
+  stage            OpportunityStage      @default(LEAD)
+  probability      Int                   @default(10)
   ownerId          String?
-  owner            User?             @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  owner            User?                 @relation(fields: [ownerId], references: [id], onDelete: SetNull)
   expectedDate     DateTime?
   source           String?
   notes            String?
   pricingEstimates PricingEstimate[]
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
+  activities       OpportunityActivity[]
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
 
   @@index([stage])
   @@index([clientId])
 }
 
+/// Log de ações junto ao cliente na oportunidade (primeiro contato, visita, ligação, envio de proposta…).
+model OpportunityActivity {
+  id            String      @id @default(cuid())
+  opportunityId String
+  opportunity   Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  type          String // catálogo OPPORTUNITY_ACTIVITY_TYPES
+  occurredAt    DateTime
+  description   String
+  contactId     String?
+  contact       Contact?    @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  userId        String?
+  user          User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  /// Registro automático do sistema (ex.: envio de proposta pela Precificação).
+  automatic     Boolean     @default(false)
+  createdAt     DateTime    @default(now())
+
+  @@index([opportunityId, occurredAt])
+}
+
 model Contract {
-  id                String           @id @default(cuid())
-  number            String           @unique
+  id                String               @id @default(cuid())
+  number            String               @unique
   clientId          String
-  client            Client           @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  client            Client               @relation(fields: [clientId], references: [id], onDelete: Restrict)
   propertyId        String?
-  property          Property?        @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+  property          Property?            @relation(fields: [propertyId], references: [id], onDelete: SetNull)
   startDate         DateTime
   endDate           DateTime?
-  value             Decimal?         @db.Decimal(12, 2)
+  value             Decimal?             @db.Decimal(12, 2)
   periodicity       String? // MENSAL, TRIMESTRAL, SEMESTRAL, ANUAL, AVULSO
   object            String
   ownerId           String?
-  owner             User?            @relation(fields: [ownerId], references: [id], onDelete: SetNull)
-  status            ContractStatus   @default(ATIVO)
+  owner             User?                @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  status            ContractStatus       @default(ATIVO)
   notes             String?
   documents         Document[]
   proposals         CommercialProposal[]
   pricingEstimateId String?
-  pricingEstimate   PricingEstimate? @relation(fields: [pricingEstimateId], references: [id], onDelete: SetNull)
-  createdAt         DateTime         @default(now())
-  updatedAt         DateTime         @updatedAt
+  pricingEstimate   PricingEstimate?     @relation(fields: [pricingEstimateId], references: [id], onDelete: SetNull)
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
 
   @@index([clientId])
   @@index([endDate])
@@ -302,6 +324,8 @@ model Property {
   client       Client   @relation(fields: [clientId], references: [id], onDelete: Restrict)
   name         String
   propertyType String? // CONDOMINIO, INDUSTRIA, PARQUE, ...
+  /// PUBLICA ou PRIVADA (catálogo PROPERTY_OWNERSHIP). Nulo nos cadastros antigos.
+  ownership    String?
   address      String?
   number       String?
   complement   String?
@@ -575,35 +599,40 @@ model Intervention {
 }
 
 model WorkOrder {
-  id                String           @id @default(cuid())
-  number            String           @unique // OS-2026-0001
+  id                String              @id @default(cuid())
+  number            String              @unique // OS-2026-0001
   clientId          String
-  client            Client           @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  client            Client              @relation(fields: [clientId], references: [id], onDelete: Restrict)
   propertyId        String?
-  property          Property?        @relation(fields: [propertyId], references: [id], onDelete: SetNull)
-  trees             Tree[]           @relation("WorkOrderTrees")
+  property          Property?           @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+  trees             Tree[]              @relation("WorkOrderTrees")
   service           String
   description       String?
-  priority          Priority         @default(MEDIA)
+  priority          Priority            @default(MEDIA)
   scheduledAt       DateTime?
   executedAt        DateTime?
   teamId            String?
-  team              Team?            @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  team              Team?               @relation(fields: [teamId], references: [id], onDelete: SetNull)
   responsibleId     String?
-  responsible       User?            @relation(fields: [responsibleId], references: [id], onDelete: SetNull)
-  status            WorkOrderStatus  @default(ABERTA)
-  cost              Decimal?         @db.Decimal(12, 2)
+  responsible       User?               @relation(fields: [responsibleId], references: [id], onDelete: SetNull)
+  status            WorkOrderStatus     @default(ABERTA)
+  cost              Decimal?            @db.Decimal(12, 2)
   notes             String?
   interventions     Intervention[]
   photos            Photo[]
   documents         Document[]
   pricingEstimateId String?
-  pricingEstimate   PricingEstimate? @relation(fields: [pricingEstimateId], references: [id], onDelete: SetNull)
-  createdAt         DateTime         @default(now())
-  updatedAt         DateTime         @updatedAt
+  pricingEstimate   PricingEstimate?    @relation(fields: [pricingEstimateId], references: [id], onDelete: SetNull)
+  /// Origem: PROPOSTA (vinculada a uma proposta comercial) ou AVULSO (serviço avulso). Nulo nas OS antigas.
+  origin            String?
+  proposalId        String?
+  proposal          CommercialProposal? @relation(fields: [proposalId], references: [id], onDelete: SetNull)
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
 
   @@index([status])
   @@index([scheduledAt])
+  @@index([proposalId])
 }
 
 // ─────────────────────── Arquivos ───────────────────────
@@ -634,29 +663,29 @@ model Photo {
 }
 
 model Document {
-  id           String     @id @default(cuid())
-  storageKey   String     @unique
+  id           String              @id @default(cuid())
+  storageKey   String              @unique
   fileName     String
   mimeType     String
   size         Int
   type         String // LAUDO, AUTORIZACAO, RELATORIO, CONTRATO, DOCUMENTO_AMBIENTAL, OUTRO
   description  String?
   clientId     String?
-  client       Client?    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  client       Client?             @relation(fields: [clientId], references: [id], onDelete: Cascade)
   propertyId   String?
-  property     Property?  @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  property     Property?           @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   treeId       String?
-  tree         Tree?      @relation(fields: [treeId], references: [id], onDelete: Cascade)
+  tree         Tree?               @relation(fields: [treeId], references: [id], onDelete: Cascade)
   contractId   String?
-  contract     Contract?  @relation(fields: [contractId], references: [id], onDelete: SetNull)
+  contract     Contract?           @relation(fields: [contractId], references: [id], onDelete: SetNull)
   workOrderId  String?
-  workOrder    WorkOrder? @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+  workOrder    WorkOrder?          @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
   /// Proposta a que o documento se refere (PDF emitido ou proposta assinada pelo cliente).
   proposalId   String?
   proposal     CommercialProposal? @relation(fields: [proposalId], references: [id], onDelete: SetNull)
   uploadedById String?
-  uploadedBy   User?      @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
-  createdAt    DateTime   @default(now())
+  uploadedBy   User?               @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+  createdAt    DateTime            @default(now())
 
   @@index([clientId])
   @@index([contractId])
@@ -1080,6 +1109,7 @@ model CommercialProposal {
   updatedAt        DateTime                 @updatedAt
   items            CommercialProposalItem[]
   documents        Document[]
+  workOrders       WorkOrder[]
 
   @@index([estimateId])
   @@index([contractId])

@@ -97,7 +97,7 @@ try {
   check("seleção de árvores define a quantidade", selected > 0, `${selected} árvores`);
   await com.getByRole("button", { name: "Adicionar à proposta" }).click();
   await com.waitForURL(estUrl); await ready(com);
-  check("poda salva com a quantidade de árvores selecionadas", await com.getByText(`${selected} árvore(s) selecionadas`).isVisible());
+  check("poda salva com a quantidade de árvores selecionadas", await com.getByText(new RegExp(`${selected} árvores? selecionadas`)).isVisible());
 
   // 3b. Supressão: nível "muito difícil", valores regionais, caçamba informada, compensação pela lei municipal, frete e acompanhamento técnico
   await com.getByRole("link", { name: "Adicionar serviço" }).first().click();

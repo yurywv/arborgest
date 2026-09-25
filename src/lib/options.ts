@@ -70,3 +70,17 @@ export async function openWorkOrderOptions(): Promise<Option[]> {
   });
   return rows.map((w) => ({ value: w.id, label: `${w.number} — ${w.client.tradeName ?? w.client.legalName}` }));
 }
+
+export type ProposalOption = Option & { clientId: string };
+
+/** Propostas que podem originar uma OS (emitidas, enviadas ou aceitas), da mais recente para a mais antiga. */
+export async function proposalOptions(includeId?: string | null): Promise<ProposalOption[]> {
+  const rows = await db.commercialProposal.findMany({
+    where: { OR: [{ status: { in: ["EMITIDA", "ENVIADA", "ACEITA"] } }, ...(includeId ? [{ id: includeId }] : [])] },
+    orderBy: [{ date: "desc" }, { version: "desc" }],
+    take: 500,
+    select: { id: true, number: true, version: true, title: true, status: true, clientId: true },
+  });
+  const st: Record<string, string> = { EMITIDA: "emitida", ENVIADA: "enviada", ACEITA: "aceita", RECUSADA: "recusada", CANCELADA: "cancelada", SUBSTITUIDA: "substituída", RASCUNHO: "rascunho" };
+  return rows.map((p) => ({ value: p.id, clientId: p.clientId, label: `${p.number}${p.version > 1 ? ` v${p.version}` : ""} — ${p.title} (${st[p.status] ?? p.status})` }));
+}

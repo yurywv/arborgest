@@ -84,7 +84,12 @@ try {
   await page.getByRole("button", { name: "Capturar minha localização" }).click();
   await page.getByText(/Localização capturada/).waitFor();
   await save();
+  await page.getByText("Verifique os campos destacados.").waitFor();
+  check("propriedade exige identificação pública/privada (sem valor sugerido)", (await page.locator("#f-ownership").inputValue()) === "");
+  await select("Identificação da propriedade", "Privada");
+  await save();
   await page.waitForURL(/\/propriedades\/c[a-z0-9]+$/); await ready();
+  check("propriedade identificada como privada", await page.getByText("Propriedade privada").isVisible());
   const propId = page.url().split("/").pop();
   await go(`${base}/propriedades/${propId}?aba=setores`);
   await fill("Nome do setor/área", "Bloco E2E");
@@ -161,7 +166,13 @@ try {
   await select("Serviço", "Poda");
   await select("Gerar intervenção para cada árvore (opcional)", "Poda de limpeza");
   await save();
+  await page.getByText("Verifique os campos destacados.").waitFor();
+  check("OS exige a origem (proposta ou serviço avulso), sem opção marcada",
+    !(await page.locator("#origin-PROPOSTA").isChecked()) && !(await page.locator("#origin-AVULSO").isChecked()));
+  await page.locator("#origin-AVULSO").check();
+  await save();
   await page.waitForURL(/\/ordens-servico\/c[a-z0-9]+$/); await ready();
+  check("OS registrada como serviço avulso", await page.getByText("Serviço avulso").isVisible());
   const osNumber = await page.getByRole("heading", { level: 1 }).first().textContent();
   check(`OS criada ${osNumber}`, /^OS-\d{4}-\d{4}$/.test(osNumber ?? ""));
   page.once("dialog", (d) => d.accept());

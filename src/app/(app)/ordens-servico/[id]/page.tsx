@@ -25,7 +25,7 @@ export default async function WorkOrderDetail({ params }: { params: Promise<{ id
     db.workOrder.findUnique({
       where: { id },
       include: {
-        client: true, property: true, team: { include: { members: { select: { name: true } } } }, responsible: true,
+        client: true, property: true, proposal: { select: { id: true, number: true, version: true, title: true, contractId: true, estimateId: true } }, team: { include: { members: { select: { name: true } } } }, responsible: true,
         trees: { orderBy: { code: "asc" }, include: { species: true, sector: true } },
         interventions: { include: { tree: { select: { code: true } } }, orderBy: { createdAt: "asc" } },
         photos: { orderBy: { takenAt: "desc" }, include: { uploadedBy: { select: { name: true } } } },
@@ -74,6 +74,9 @@ export default async function WorkOrderDetail({ params }: { params: Promise<{ id
             ["Cliente", <Link key="c" className="link" href={`/clientes/${w.clientId}`}>{w.client.tradeName ?? w.client.legalName}</Link>],
             ["Propriedade", w.property && <Link key="p" className="link" href={`/propriedades/${w.property.id}`}>{w.property.name}</Link>],
             ["Serviço", labelOf(SERVICES, w.service)],
+            ["Origem", w.origin === "PROPOSTA" && w.proposal
+              ? <span key="o">Proposta <Link className="link" href={w.proposal.contractId ? `/contratos/${w.proposal.contractId}/propostas/${w.proposal.id}` : `/precificacao/${w.proposal.estimateId}?aba=proposta&p=${w.proposal.id}`}>{w.proposal.number}{w.proposal.version > 1 ? ` v${w.proposal.version}` : ""}</Link></span>
+              : w.origin === "AVULSO" ? "Serviço avulso" : "Não informada"],
             ["Data prevista", fmtDate(w.scheduledAt)],
             ["Data executada", fmtDate(w.executedAt)],
             ["Custo", fmtMoney(w.cost)],

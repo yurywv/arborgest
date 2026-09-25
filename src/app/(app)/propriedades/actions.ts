@@ -5,8 +5,8 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { assertPermission } from "@/lib/auth/session";
 import { audit } from "@/lib/audit";
-import { bool, formObject, keysOf, optEnum, optNum, optStr, reqStr, runAction, finish } from "@/lib/actions";
-import { PROPERTY_TYPES, UFS } from "@/lib/catalogs";
+import { bool, formObject, keysOf, optEnum, optNum, optStr, reqStr, runAction, finish, reqEnum } from "@/lib/actions";
+import { PROPERTY_OWNERSHIP, PROPERTY_TYPES, UFS } from "@/lib/catalogs";
 import type { ActionState } from "@/lib/action-state";
 
 const lat = () => optNum({ min: -90, max: 90 });
@@ -15,6 +15,7 @@ const lng = () => optNum({ min: -180, max: 180 });
 const schema = z.object({
   clientId: reqStr("Cliente", 40),
   name: reqStr("Nome da propriedade", 200),
+  ownership: reqEnum(keysOf(PROPERTY_OWNERSHIP), "Identificação da propriedade (pública ou privada)"),
   propertyType: optEnum(keysOf(PROPERTY_TYPES)),
   address: optStr(200),
   number: optStr(20),

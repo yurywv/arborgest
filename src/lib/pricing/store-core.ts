@@ -4,7 +4,7 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { LEGACY_EXCEL_PARAMS, PRICING_PARAM_MIGRATIONS, normalizeParams } from "./defaults";
 import { SERVICES } from "./registry";
-import type { PricingParams, ServiceCode } from "./types";
+import type { CoreServiceCode, PricingParams } from "./types";
 import { DIFFICULTIES, DIFFICULTY_LABEL } from "./types";
 
 type Tx = PrismaClient | Prisma.TransactionClient;
@@ -59,7 +59,7 @@ function normalized(raw: PricingParams) {
   for (const d of DIFFICULTIES)
     if (sup.cacambaArvoresPor?.[d]) parameters.push({ group: "SUPRESSAO", key: `supressao.cacamba.arvoresPor.${d}`, label: `Árvores por caçamba (${DIFFICULTY_LABEL[d]})`, value: sup.cacambaArvoresPor[d], unit: "árvores" });
 
-  const services = Object.entries(p.services) as [ServiceCode, PricingParams["services"][ServiceCode]][];
+  const services = Object.entries(p.services) as [CoreServiceCode, PricingParams["services"][CoreServiceCode]][];
   return {
     parameters,
     productivity: services.flatMap(([svc, sp]) =>
@@ -100,10 +100,12 @@ export async function publishParamsVersion(tx: Tx, params: PricingParams, opts: 
 export async function ensurePricingSetup(db: PrismaClient) {
   let order = 0;
   for (const s of Object.values(SERVICES)) {
+    order++;
     await db.pricingService.upsert({
       where: { code: s.code },
-      create: { code: s.code, name: s.name, description: s.description, unit: s.unit, order: order++ },
-      update: {},
+      create: { code: s.code, name: s.name, description: s.description, unit: s.unit, order },
+      // Nome/ordem seguem o catálogo comercial; "ativo" continua sob controle da administração.
+      update: { name: s.name, description: s.description, unit: s.unit, order },
     });
   }
   const count = await db.pricingParameterVersion.count();

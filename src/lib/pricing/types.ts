@@ -8,7 +8,13 @@ export const ENGINE_LABEL: Record<EngineVersion, string> = {
   V2_ARBORENT: "Motor v2 — Arborent padronizado",
 };
 
-export type ServiceCode = "INVENTARIO" | "SUPRESSAO" | "PODA";
+/** Serviços com fórmula própria (produtividade por árvore, parâmetros por serviço). */
+export type CoreServiceCode = "INVENTARIO" | "SUPRESSAO" | "PODA";
+/** Demais serviços do catálogo comercial: custo por diárias de equipe informadas (sem produtividade por árvore). */
+export type GeneralServiceCode = "AVALIACAO_RISCO" | "CONSULTORIA" | "LICENCIAMENTO" | "MANEJO" | "MANUTENCAO" | "PLANTIO" | "FITOSSANIDADE";
+export type ServiceCode = CoreServiceCode | GeneralServiceCode;
+export const CORE_SERVICE_CODES: CoreServiceCode[] = ["INVENTARIO", "SUPRESSAO", "PODA"];
+export const isCoreService = (c: ServiceCode): c is CoreServiceCode => (CORE_SERVICE_CODES as string[]).includes(c);
 export type Difficulty = 1 | 2 | 3 | 4;
 export const DIFFICULTY_LABEL: Record<Difficulty, string> = { 1: "Fácil", 2: "Média", 3: "Difícil", 4: "Muito difícil" };
 export const DIFFICULTIES: Difficulty[] = [1, 2, 3, 4];
@@ -103,7 +109,7 @@ export interface PricingParams {
   general: GeneralParams;
   rules: RuleParams;
   approval: ApprovalParams;
-  services: Record<ServiceCode, ServiceParams>;
+  services: Record<CoreServiceCode, ServiceParams>;
 }
 
 // ── Entradas ──
@@ -149,7 +155,21 @@ export interface PodaInputs extends FieldOperationInputs {
   // serviceType: 1 = Limpeza + Raleamento, 2 = Só limpeza, 3 = Só raleamento
   license: boolean;
 }
-export type ServiceInputs = InventarioInputs | SupressaoInputs | PodaInputs;
+/** Serviços por diárias: quantidade (na unidade do serviço), dias de equipe e custos diretos informados. */
+export interface GeneralInputs {
+  trees: number; // quantidade na unidade do serviço (árvores, mudas, visitas…)
+  days: number; // dias de equipe em campo/trabalho
+  technicians: number;
+  auxiliaries: number;
+  distanceKm: number;
+  toll: number;
+  lodging: boolean;
+  mealCost?: number | null;
+  lodgingCost?: number | null;
+  materials?: number | null; // insumos/materiais (R$)
+  thirdParty?: number | null; // serviços de terceiros, taxas e emolumentos (R$)
+}
+export type ServiceInputs = InventarioInputs | SupressaoInputs | PodaInputs | GeneralInputs;
 
 // ── Resultado ──
 export type ComponentGroup = "QTD" | "CUSTO" | "FATOR" | "TOTAL" | "PRECO";

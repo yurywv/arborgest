@@ -133,18 +133,21 @@ export const OPPORTUNITY_SOURCES = opts({
   OUTRO: "Outro",
 });
 
-export const SERVICES = opts({
-  INVENTARIO: "Inventário arbóreo",
-  LAUDO: "Laudo técnico",
+/** Catálogo único de serviços: oportunidades, ordens de serviço e precificação (simulador/orçamentos). */
+export const SERVICE_LABELS = {
   AVALIACAO_RISCO: "Avaliação de risco",
-  PODA: "Poda",
-  REMOCAO: "Remoção",
-  PLANTIO: "Plantio",
-  MANEJO: "Manejo / manutenção periódica",
-  FITOSSANIDADE: "Tratamento fitossanitário",
   CONSULTORIA: "Consultoria",
+  INVENTARIO: "Inventário",
   LICENCIAMENTO: "Licenciamento ambiental",
-});
+  MANEJO: "Manejo",
+  MANUTENCAO: "Manutenção periódica",
+  PLANTIO: "Plantio",
+  PODA: "Poda",
+  REMOCAO: "Remoção / supressão",
+  FITOSSANIDADE: "Tratamento fitossanitário",
+} as const;
+export type CatalogService = keyof typeof SERVICE_LABELS;
+export const SERVICES = opts(SERVICE_LABELS);
 
 export const PERIODICITY = opts({
   AVULSO: "Avulso",
@@ -429,3 +432,23 @@ export const DOCUMENT_TYPES = opts({
 
 export const enumOptions = (m: Record<string, string>): Option[] =>
   Object.entries(m).map(([value, label]) => ({ value, label }));
+
+/** Ações registradas junto ao cliente em cada oportunidade. */
+export const OPPORTUNITY_ACTIVITY_TYPES = opts({
+  PRIMEIRO_CONTATO: "Primeiro contato",
+  VISITA_PRESENCIAL: "Visita presencial",
+  LIGACAO: "Chamada telefônica",
+  VIDEOCONFERENCIA: "Videoconferência",
+  WHATSAPP: "Contato por WhatsApp",
+  EMAIL: "E-mail",
+  REUNIAO: "Reunião",
+  ENVIO_PROPOSTA: "Envio da proposta",
+  NEGOCIACAO: "Negociação",
+  HOMOLOGACAO: "Homologação",
+  TRATATIVAS: "Tratativas",
+  OUTRO: "Outro",
+});
+
+export const WORK_ORDER_ORIGIN = opts({ PROPOSTA: "Proposta", AVULSO: "Serviço avulso" });
+
+export const PROPERTY_OWNERSHIP = opts({ PUBLICA: "Pública", PRIVADA: "Privada" });

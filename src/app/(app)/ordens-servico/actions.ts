@@ -7,11 +7,13 @@ import { assertPermission } from "@/lib/auth/session";
 import { audit } from "@/lib/audit";
 import { nextWorkOrderNumber } from "@/lib/counters";
 import { enumVals, fieldError, formObject, keysOf, optDate, optEnum, optId, optNum, optStr, reqEnum, reqStr, runAction, UserError, finish } from "@/lib/actions";
-import { INTERVENTION_TYPES, SERVICES } from "@/lib/catalogs";
+import { INTERVENTION_TYPES, SERVICES, WORK_ORDER_ORIGIN } from "@/lib/catalogs";
 import type { ActionState } from "@/lib/action-state";
 
 const schema = z.object({
   clientId: reqStr("Cliente", 40),
+  origin: reqEnum(keysOf(WORK_ORDER_ORIGIN), "Origem (proposta ou serviço avulso)"),
+  proposalId: optId(),
   propertyId: optId(),
   treeIds: z.array(z.string().max(40)).max(1000),
   service: reqEnum(keysOf(SERVICES), "Serviço"),
@@ -36,6 +38,14 @@ export async function saveWorkOrder(id: string | null, _: ActionState, fd: FormD
       const p = await db.property.findUnique({ where: { id: d.propertyId } });
       if (p?.clientId !== d.clientId) return fieldError("propertyId", "A propriedade não pertence ao cliente.");
     }
+    if (d.origin === "PROPOSTA") {
+      if (!d.proposalId) return fieldError("proposalId", "Selecione a proposta.");
+      const prop = await db.commercialProposal.findUnique({ where: { id: d.proposalId }, select: { clientId: true, status: true } });
+      if (!prop || prop.clientId !== d.clientId) return fieldError("proposalId", "A proposta não pertence ao cliente.");
+      const prev = id ? await db.workOrder.findUnique({ where: { id }, select: { proposalId: true } }) : null;
+      if (!["EMITIDA", "ENVIADA", "ACEITA"].includes(prop.status) && prev?.proposalId !== d.proposalId)
+        return fieldError("proposalId", "A proposta está cancelada, recusada ou substituída.");
+    } else d.proposalId = null;
     // Garante que as árvores pertencem ao cliente (e à propriedade, se informada).
     const trees = treeIds.length
       ? await db.tree.findMany({ where: { id: { in: treeIds }, property: { clientId: d.clientId }, ...(d.propertyId && { propertyId: d.propertyId }) }, select: { id: true } })

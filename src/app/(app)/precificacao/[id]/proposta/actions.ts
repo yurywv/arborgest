@@ -100,6 +100,13 @@ export async function sendProposal(proposalId: string, _: ActionState, fd: FormD
         await tx.pricingEstimate.update({ where: { id: est.id }, data: { status: "ENVIADO_CLIENTE", sentAt: est.sentAt ?? new Date() } });
         if (est.opportunityId) await tx.opportunity.update({ where: { id: est.opportunityId }, data: { stage: "PROPOSTA", estimatedValue: est.negotiatedTotal } });
       }
+      if (est.opportunityId)
+        await tx.opportunityActivity.create({
+          data: {
+            opportunityId: est.opportunityId, type: "ENVIO_PROPOSTA", occurredAt: new Date(), userId: user.id, automatic: true, contactId: p.contactId,
+            description: `Proposta ${p.number} (${p.title}) enviada ao cliente${sentTo ? ` — ${byEmail ? "e-mail para" : "destinatário"} ${sentTo}` : ""}. Orçamento ${est.number}.`,
+          },
+        });
       await pricingAudit(tx, user.id, "ENVIO_CLIENTE", "CommercialProposal", p.id, {
         estimateId: est.id, field: "status", previousValue: p.status, newValue: "ENVIADA", justification: byEmail ? `E-mail para ${sentTo}` : `Envio registrado manualmente${sentTo ? ` (${sentTo})` : ""}`,
       });

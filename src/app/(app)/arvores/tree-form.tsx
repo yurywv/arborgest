@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import type { Tree } from "@prisma/client";
-import { ActionForm, CheckboxGroup, Field, FormActions, FormSection, NumberField, SearchSelectField, SelectField, TextArea } from "@/components/form";
+import { ActionForm, Checkbox, CheckboxGroup, Field, FormActions, FormSection, NumberField, SearchSelectField, SelectField, TextArea } from "@/components/form";
 import { ClientPropertySelect } from "@/components/client-property-select";
 import { LocationInput } from "@/components/map/location-input";
 import {
@@ -72,6 +72,14 @@ export function TreeForm({
         </div>
         <TextArea name="conflictNotes" label="Detalhes dos conflitos" rows={2} defaultValue={t.conflictNotes} wrapClassName="sm:col-span-2" />
         <TextArea name="notes" label="Observações gerais" rows={3} defaultValue={t.notes} wrapClassName="sm:col-span-2" />
+      </FormSection>
+
+      <FormSection title="Etiqueta QR Code" description={tree
+        ? `ID individual ${tree.code}, gravado no QR Code da etiqueta.`
+        : "O ID individual (ARB-000000) é criado ao salvar e gravado no QR Code: ao escanear a etiqueta, o celular abre a ficha do exemplar."}>
+        {tree
+          ? <p className="text-sm sm:col-span-2"><Link className="link" href={`/arvores/${tree.code}/qrcode`}>Ver e imprimir a etiqueta QR Code</Link></p>
+          : <div className="sm:col-span-2"><Checkbox name="makeLabel" label="Gerar a etiqueta QR Code ao salvar" hint="Depois de salvar, abre a etiqueta pronta para imprimir ou baixar (PNG)." /></div>}
       </FormSection>
 
       <FormActions cancelHref={tree ? `/arvores/${tree.code}` : "/arvores"} />

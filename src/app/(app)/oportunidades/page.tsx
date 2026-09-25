@@ -64,7 +64,7 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
               <ul className="space-y-2">
                 {items.map((o) => (
                   <li key={o.id} className="card space-y-2 p-3">
-                    <Link href={canWrite ? `/oportunidades/${o.id}/editar` : "#"} className="block text-sm font-medium hover:underline">{o.description}</Link>
+                    <Link href={`/oportunidades/${o.id}`} className="block text-sm font-medium hover:underline">{o.description}</Link>
                     <p className="text-xs text-stone-500">{o.client.tradeName ?? o.client.legalName}</p>
                     <div className="flex flex-wrap items-center gap-1.5 text-xs">
                       <Badge tone="blue">{fmtMoney(o.estimatedValue)}</Badge>

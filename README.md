@@ -249,6 +249,7 @@ npm run test:unit                                   # Pricing Engine: fórmulas,
 npm run test:smoke -- http://localhost:3000         # 133 rotas + permissões dos 6 perfis + exportações
 npm run test:e2e:pricing -- http://localhost:3000   # fluxo de precificação completo (orçamento → proposta → aceite → contrato/OS)
 npm run test:e2e:contracts -- http://localhost:3000 # propostas em PDF no contrato, anexos e histórico do cliente
+npm run test:e2e:crm-ops -- http://localhost:3000   # serviços do simulador, log da oportunidade, origem da OS, etiqueta QR, propriedade pública/privada
 npx playwright install chromium                     # uma vez
 SERVER_LOG=caminho/do/log npm run test:e2e -- http://localhost:3000 e2e/screenshots
 ```

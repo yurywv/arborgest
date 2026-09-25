@@ -49,7 +49,7 @@ export default async function CalculationPage({ params }: { params: Promise<{ ca
           <Card title="Resultado gravado">
             <DataList cols={3} items={[
               ["Preço final", <b key="p">{fmtBRL(s.result.finalPriceRounded)}</b>],
-              ["Preço por árvore", fmtBRL(s.result.unitPriceRounded)],
+              [`Preço por ${SERVICES[s.service]?.unit ?? "unidade"}`, fmtBRL(s.result.unitPriceRounded)],
               ["Dias / equipe", `${s.result.days} dia(s) · ${s.result.technicians} téc. + ${s.result.auxiliaries} aux.`],
               ...(costs ? [["Custo operacional", fmtBRL(s.result.operationalCost)] as [string, React.ReactNode]] : []),
               ["Motor", ENGINE_LABEL[s.engine.version]],

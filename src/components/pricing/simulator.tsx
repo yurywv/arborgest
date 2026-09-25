@@ -11,7 +11,7 @@ import { SERVICES, calculate, type FieldDef } from "@/lib/pricing/registry";
 import { fmtBRL, fmtN, fmtPct } from "@/lib/pricing/decimal";
 import { toPureLegacy, toV2 } from "@/lib/pricing/defaults";
 import { adjustedItemPrice } from "@/lib/pricing/policy";
-import type { CalcResult, Difficulty, PricingParams, ServiceCode } from "@/lib/pricing/types";
+import type { CalcResult, Difficulty, PricingParams, ServiceCode, CoreServiceCode } from "@/lib/pricing/types";
 import { DIFFICULTIES, DIFFICULTY_LABEL } from "@/lib/pricing/types";
 import { TreePicker, type PickerTree } from "./tree-picker";
 
@@ -103,7 +103,10 @@ export function PricingSimulator(props: SimulatorProps) {
   const [serverMsg, setServerMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   const def = service ? SERVICES[service] : null;
-  const effective: Values = useMemo(() => (useTrees ? { ...values, trees: String(treeIds.length) } : values), [useTrees, values, treeIds]);
+  const perTree = def?.perTree ?? true;
+  const unit = def?.unit ?? "árvore";
+  const treesOn = useTrees && perTree;
+  const effective: Values = useMemo(() => (treesOn ? { ...values, trees: String(treeIds.length) } : values), [treesOn, values, treeIds]);
   const { result, error } = useMemo(() => tryCalc(service, effective, params), [service, effective, params]);
   const comparison = useMemo(() => {
     if (!props.showComparison) return null;
@@ -134,6 +137,7 @@ export function PricingSimulator(props: SimulatorProps) {
     { key: "REGIONAL", title: "Valores regionais" },
     { key: "OPERACAO", title: "Operação" },
     { key: "SERVICO", title: def?.name ?? "" },
+    { key: "CUSTOS", title: "Materiais, terceiros e taxas" },
     { key: "COMPENSACAO", title: "Compensação ambiental" },
     { key: "FRETE", title: "Frete (mudas e materiais)" },
     { key: "ACOMPANHAMENTO", title: "Acompanhamento técnico" },
@@ -159,7 +163,7 @@ export function PricingSimulator(props: SimulatorProps) {
     const svc = service;
     start(async () => {
       const r = await props.onSave!({
-        service: svc, inputs: toInputs(effective, svc), description, treeIds: useTrees ? treeIds : [], confirmWarnings: confirm, clientPrice: result.finalPriceRounded,
+        service: svc, inputs: toInputs(effective, svc), description, treeIds: treesOn ? treeIds : [], confirmWarnings: confirm, clientPrice: result.finalPriceRounded,
       });
       if (r && !r.ok) setServerMsg({ ok: false, text: r.message ?? "Falha ao salvar." });
     });
@@ -193,7 +197,7 @@ export function PricingSimulator(props: SimulatorProps) {
           return (
             <section key={sec.key} className="card card-body">
               <h2 className="mb-3 text-xs font-bold tracking-wider text-stone-500 uppercase">{sec.title}</h2>
-              {sec.key === "QUANTIDADE" && props.trees && (
+              {sec.key === "QUANTIDADE" && props.trees && perTree && (
                 <div className="mb-3 flex flex-wrap items-center gap-2">
                   <button type="button" className={clsx("btn btn-sm", !useTrees ? "btn-primary" : "btn-secondary")} onClick={() => setUseTrees(false)}>Informar quantidade</button>
                   <button type="button" className={clsx("btn btn-sm", useTrees ? "btn-primary" : "btn-secondary")} onClick={() => setUseTrees(true)}>
@@ -201,7 +205,7 @@ export function PricingSimulator(props: SimulatorProps) {
                   </button>
                 </div>
               )}
-              {sec.key === "QUANTIDADE" && useTrees && props.trees ? (
+              {sec.key === "QUANTIDADE" && treesOn && props.trees ? (
                 <TreePicker trees={props.trees} selected={treeIds} onChange={setTreeIds} />
               ) : (
                 <div className={clsx("grid gap-4", sec.key !== "MODIFICADORES" && "sm:grid-cols-2")}>
@@ -213,7 +217,7 @@ export function PricingSimulator(props: SimulatorProps) {
         })}
         {/* Celular: preço sempre visível acima da navegação inferior */}
         <a href="#simulacao" className="sticky bottom-[5.75rem] z-10 flex items-center justify-between rounded-2xl bg-brand-700 px-4 py-3 text-white shadow-lg lg:hidden">
-          <span className="text-xs text-brand-100">{error ? "Verifique os dados" : `${result?.days ?? 0} dia(s) · ${fmtBRL(result?.unitPriceRounded ?? 0)}/árvore`}</span>
+          <span className="text-xs text-brand-100">{error ? "Verifique os dados" : `${result?.days ?? 0} dia(s) · ${fmtBRL(result?.unitPriceRounded ?? 0)}/${unit}`}</span>
           <span className="text-lg font-bold tabular-nums">{result ? fmtBRL(result.finalPriceRounded) : "—"}</span>
         </a>
       </div>
@@ -233,8 +237,8 @@ export function PricingSimulator(props: SimulatorProps) {
             ) : result ? (
               <>
                 <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                  <Stat k="Árvores" v={fmtN(effective.trees as string || 0)} />
-                  <Stat k="Produtividade" v={`${fmtN(result.productivity)}/dia`} />
+                  <Stat k={perTree ? "Árvores" : "Quantidade"} v={`${fmtN(effective.trees as string || 0)}${perTree ? "" : ` ${def?.unitPlural ?? ""}`}`} />
+                  {Number(result.productivity) > 0 && <Stat k="Produtividade" v={`${fmtN(result.productivity)}/dia`} />}
                   <Stat k="Dias" v={`${result.days}${result.extraDays ? ` (+${result.extraDays})` : ""}`} />
                   <Stat k="Equipe" v={`${result.technicians} téc. + ${result.auxiliaries} aux.`} />
                   {canSeeCosts && <>
@@ -247,7 +251,7 @@ export function PricingSimulator(props: SimulatorProps) {
                 <div className="rounded-xl bg-brand-50 p-3 text-center">
                   <div className="text-xs font-semibold tracking-wide text-brand-800 uppercase">Preço final</div>
                   <div data-testid="preco-final" className="text-3xl font-bold text-brand-900 tabular-nums">{fmtBRL(result.finalPriceRounded)}</div>
-                  <div className="text-sm text-brand-800">{fmtBRL(result.unitPriceRounded)} por árvore</div>
+                  <div className="text-sm text-brand-800">{fmtBRL(result.unitPriceRounded)} por {unit}</div>
                   {canSeeCosts && <div className="mt-1 text-xs text-brand-700">Margem efetiva {fmtPct(result.effectiveMargin)}</div>}
                 </div>
                 {props.estimateMargin && (() => {
@@ -256,7 +260,7 @@ export function PricingSimulator(props: SimulatorProps) {
                     <div className="rounded-xl border border-violet-200 bg-violet-50 p-3 text-center text-violet-900">
                       <div className="text-xs font-semibold uppercase">Na proposta, com a margem do orçamento{canSeeCosts ? ` (${fmtPct(props.estimateMargin)})` : ""}</div>
                       <div data-testid="preco-com-margem" className="text-xl font-bold tabular-nums">{fmtBRL(adj.price)}</div>
-                      <div className="text-xs">{fmtBRL(adj.price.div(Number(effective.trees) || 1))} por árvore</div>
+                      <div className="text-xs">{fmtBRL(adj.price.div(Number(effective.trees) || 1))} por {unit}</div>
                     </div>
                   );
                 })()}
@@ -332,7 +336,7 @@ function FieldInput({ f, values, set, params, service, rules, applyRule }: {
       </label>
     );
   if (f.kind === "difficulty") {
-    const sp = params.services[service];
+    const sp = params.services[service as CoreServiceCode];
     const levels = DIFFICULTIES.filter((d) => sp.productivity[d]);
     const hint = sp.difficultyHints?.[Number(v) as Difficulty];
     return (
@@ -400,7 +404,7 @@ function FieldInput({ f, values, set, params, service, rules, applyRule }: {
         <label className="label" htmlFor={id}>{f.label}</label>
         <select id={id} className="input" value={String(v ?? "")} onChange={(e) => set(f.key, e.target.value)}>
           <option value="">Selecione…</option>
-          {(params.services[service].serviceTypes ?? []).map((t) => (
+          {(params.services[service as CoreServiceCode].serviceTypes ?? []).map((t) => (
             <option key={t.code} value={t.code}>{t.label}{Number(t.factor) !== 1 ? ` (× ${fmtN(t.factor)})` : ""}</option>
           ))}
         </select>
@@ -408,7 +412,7 @@ function FieldInput({ f, values, set, params, service, rules, applyRule }: {
     );
   if (f.kind === "modifiers") {
     const selected = (v as string[]) ?? [];
-    const mods = (params.services[service].modifiers ?? []).filter((m) => m.active).sort((a, b) => a.order - b.order);
+    const mods = (params.services[service as CoreServiceCode].modifiers ?? []).filter((m) => m.active).sort((a, b) => a.order - b.order);
     return (
       <div className="grid gap-2 sm:grid-cols-2">
         {mods.map((m) => (

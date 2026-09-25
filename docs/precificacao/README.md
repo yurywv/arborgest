@@ -156,3 +156,16 @@ Orçamentos, propostas, PDF, auditoria, indicadores e integração com CRM/OS s�
 | `npx tsx scripts/pricing-parity/report.mts` | Regera o relatório `validacao-logica-legada.md` |
 | `npm run test:smoke` | Todas as rotas (inclusive precificação) com cada perfil |
 | `npm run test:e2e:pricing` | Fluxo completo no navegador (50 verificações), inclusive campos sem sugestão, edição de orçamento aceito, auditoria de tentativas recusadas, comissão, lei municipal, valores regionais, margem do orçamento, celular e permissões |
+
+## Serviços do simulador = catálogo comercial (set/2026)
+O simulador e os orçamentos oferecem os mesmos serviços do cadastro de oportunidades e das ordens de serviço
+(catálogo único `SERVICE_LABELS`): Avaliação de risco, Consultoria, Inventário, Licenciamento ambiental, Manejo,
+Manutenção periódica, Plantio, Poda, Remoção / supressão e Tratamento fitossanitário.
+
+- **Inventário, Poda e Remoção / supressão** mantêm as fórmulas próprias (produtividade por árvore, paridade com a planilha).
+- **Demais serviços — cálculo por diárias** (`services/general.ts`): dias de trabalho, técnicos e auxiliares são informados;
+  mão de obra, deslocamento, alimentação, hospedagem (valores regionais opcionais) e rateio fixo seguem os parâmetros gerais;
+  somam-se materiais/insumos e terceiros/taxas informados. Preço = custo ÷ (1 − margem) ÷ (1 − imposto).
+  A quantidade usa a unidade do serviço (árvore, muda, visita, processo, serviço); só os serviços por árvore permitem vincular exemplares.
+- O código interno da supressão continua `SUPRESSAO` (orçamentos antigos inalterados); o nome exibido passa a "Remoção / supressão".
+- "Laudo técnico" foi incorporado a "Avaliação de risco" (migração atualiza oportunidades e OS existentes).

@@ -2,7 +2,7 @@
 import type { Property } from "@prisma/client";
 import { ActionForm, Checkbox, Field, FormActions, FormSection, NumberField, SelectField, TextArea } from "@/components/form";
 import { LocationInput } from "@/components/map/location-input";
-import { PROPERTY_TYPES, UFS, type Option } from "@/lib/catalogs";
+import { PROPERTY_OWNERSHIP, PROPERTY_TYPES, UFS, type Option } from "@/lib/catalogs";
 import { saveProperty } from "./actions";
 
 export function PropertyForm({ property, clients, clientId }: { property?: Property; clients: Option[]; clientId?: string }) {
@@ -12,6 +12,7 @@ export function PropertyForm({ property, clients, clientId }: { property?: Prope
       <FormSection title="Propriedade">
         <SelectField name="clientId" label="Cliente" required options={clients} defaultValue={p.clientId ?? clientId} wrapClassName="sm:col-span-2" />
         <Field name="name" label="Nome da propriedade" required defaultValue={p.name} wrapClassName="sm:col-span-2" />
+        <SelectField name="ownership" label="Identificação da propriedade" required options={PROPERTY_OWNERSHIP} defaultValue={p.ownership} hint="Pública (área de órgão público, praça, via) ou privada." />
         <SelectField name="propertyType" label="Tipo" options={PROPERTY_TYPES} defaultValue={p.propertyType} />
         <NumberField name="totalArea" label="Área total" suffix="m²" defaultValue={p.totalArea} />
         <Field name="localManager" label="Responsável local" defaultValue={p.localManager} />

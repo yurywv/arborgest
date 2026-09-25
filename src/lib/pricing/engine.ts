@@ -6,7 +6,7 @@
  */
 import { D, type DecimalT, ceil, dec, fmtBRL, fmtN, fmtPct, money, s } from "./decimal";
 import type {
-  BaseInputs, CalcComponent, CalcResult, CalcWarning, ComponentGroup, Difficulty, EngineVersion, FieldOperationInputs, ModifierDef,
+  BaseInputs, CalcComponent, CalcResult, CalcWarning, ComponentGroup, CoreServiceCode, Difficulty, EngineVersion, FieldOperationInputs, ModifierDef,
   PricingParams, ServiceCode,
 } from "./types";
 import { DIFFICULTY_LABEL } from "./types";
@@ -49,7 +49,7 @@ const plural = (n: number | DecimalT, one: string, many: string) => `${fmtN(n as
 
 /** Dias, equipe e custos de mão de obra/logística comuns a todos os serviços. */
 export function commonBlock(
-  service: ServiceCode,
+  service: CoreServiceCode,
   p: PricingParams,
   inp: BaseInputs,
   calc: Calc,
@@ -96,9 +96,30 @@ export function commonBlock(
   if (persons.isZero())
     calc.warn("ZERO_PESSOAS", "Equipe com 0 pessoas: deslocamento, alimentação e hospedagem ficam zerados.", "confirm");
 
+  const { tecnico, auxiliares, deslocamento, alimentacao, hospedagem, rateio } = laborBlock(p, inp, calc, {
+    days, persons, techCharged, meal, lodgingDay, mealTag, lodgingTag, techNote: opts.techniciansCharged === "FIXED_ONE" ? " (inventário: 1 técnico)" : "",
+  });
+
+  if (inp.trees > 5000) calc.warn("MUITAS_ARVORES", `Quantidade muito alta (${inp.trees} árvores).`, "confirm");
+  if (inp.distanceKm > 2000) calc.warn("DISTANCIA_ALTA", `Distância muito alta (${inp.distanceKm} km ida+volta).`, "confirm");
+  if (days.gt(120)) calc.warn("DIAS_ALTOS", `Operação longa: ${fmtN(days)} dias estimados.`, "confirm");
+  if (inp.auxiliaries > 30) calc.warn("EQUIPE_GRANDE", `Equipe muito grande (${inp.auxiliaries} auxiliares).`, "confirm");
+
+  return { n, prod, baseDays, extraDays, days, technicians, techCharged, persons, tecnico, auxiliares, deslocamento, alimentacao, hospedagem, rateio, meal, lodgingDay };
+}
+
+/** Custos de mão de obra e logística por dia de equipe (comum a todos os serviços). */
+export function laborBlock(
+  p: PricingParams,
+  inp: { auxiliaries: number; distanceKm: number; toll: number; lodging: boolean },
+  calc: Calc,
+  o: { days: DecimalT; persons: DecimalT; techCharged: DecimalT; meal: DecimalT; lodgingDay: DecimalT; mealTag: string; lodgingTag: string; techNote: string },
+) {
+  const g = p.general;
+  const { days, persons, techCharged, meal, lodgingDay, mealTag, lodgingTag } = o;
   const tecnico = calc.add("tecnico", "Técnico", days.mul(dec(g.tecnicoDia)).mul(techCharged),
     `${plural(days, "dia", "dias")} × ${fmtBRL(g.tecnicoDia)} × ${plural(techCharged, "técnico", "técnicos")}` +
-      (opts.techniciansCharged === "FIXED_ONE" ? " (inventário: 1 técnico)" : ""));
+      o.techNote);
   const auxiliares = calc.add("auxiliares", "Auxiliares", days.mul(dec(g.auxiliarDia)).mul(inp.auxiliaries),
     `${plural(days, "dia", "dias")} × ${fmtBRL(g.auxiliarDia)} × ${plural(inp.auxiliaries, "auxiliar", "auxiliares")}`);
   const deslocamento = calc.add("deslocamento", "Deslocamento",
@@ -112,12 +133,7 @@ export function commonBlock(
   const rateio = calc.add("rateioFixo", "Rateio custo fixo", days.mul(derived(p).custoFixoDia),
     `${plural(days, "dia", "dias")} × ${fmtBRL(derived(p).custoFixoDia)}/dia (${fmtBRL(g.custoFixoMensal)} ÷ ${fmtN(g.diasProdutivosMes)} dias)`);
 
-  if (inp.trees > 5000) calc.warn("MUITAS_ARVORES", `Quantidade muito alta (${inp.trees} árvores).`, "confirm");
-  if (inp.distanceKm > 2000) calc.warn("DISTANCIA_ALTA", `Distância muito alta (${inp.distanceKm} km ida+volta).`, "confirm");
-  if (days.gt(120)) calc.warn("DIAS_ALTOS", `Operação longa: ${fmtN(days)} dias estimados.`, "confirm");
-  if (inp.auxiliaries > 30) calc.warn("EQUIPE_GRANDE", `Equipe muito grande (${inp.auxiliaries} auxiliares).`, "confirm");
-
-  return { n, prod, baseDays, extraDays, days, technicians, techCharged, persons, tecnico, auxiliares, deslocamento, alimentacao, hospedagem, rateio, meal, lodgingDay };
+  return { tecnico, auxiliares, deslocamento, alimentacao, hospedagem, rateio };
 }
 
 /** Caçamba: quantidade e preço unitário podem ser informados (valores regionais); senão, regra de árvores por caçamba. */
@@ -157,7 +173,7 @@ export function supervisionBlock(p: PricingParams, inp: FieldOperationInputs, ca
 }
 
 /** Produto dos modificadores ligados. No motor v1 só entram os que a planilha multiplica. */
-export function modifiersBlock(p: PricingParams, service: ServiceCode, selected: string[], calc: Calc) {
+export function modifiersBlock(p: PricingParams, service: CoreServiceCode, selected: string[], calc: Calc) {
   const defs = (p.services[service].modifiers ?? []).filter((m) => selected.includes(m.key));
   const v1 = p.engineVersion === "V1_LEGACY_EXCEL";
   let factor = dec(1);
@@ -180,7 +196,7 @@ export function modifiersBlock(p: PricingParams, service: ServiceCode, selected:
 }
 
 /** Margem, imposto e preço final. */
-export function priceBlock(p: PricingParams, operational: DecimalT, trees: number, calc: Calc, method: "STANDARD" | "LEGACY_PODA") {
+export function priceBlock(p: PricingParams, operational: DecimalT, trees: number, calc: Calc, method: "STANDARD" | "LEGACY_PODA", unit = { one: "árvore", many: "árvores" }) {
   const m = dec(p.general.margem);
   const t = dec(p.general.imposto);
   if (m.gte(1) || m.lt(0)) throw new EngineError("Margem deve estar entre 0% e 99,99%.");
@@ -192,18 +208,18 @@ export function priceBlock(p: PricingParams, operational: DecimalT, trees: numbe
       ? calc.add("precoFinal", "Preço final", operational.div(D.sub(1, t)),
           `${fmtBRL(operational)} ÷ (1 − ${fmtPct(t)}) — METODOLOGIA LEGADA DA PODA: aplica só o imposto sobre o custo (margem não aplicada)`, "PRECO")
       : calc.add("precoFinal", "Preço final", priceBeforeTax.div(D.sub(1, t)), `${fmtBRL(priceBeforeTax)} ÷ (1 − ${fmtPct(t)})`, "PRECO");
-  const unit = trees > 0 ? finalPrice.div(trees) : dec(0);
-  calc.add("precoUnitario", "Preço por árvore", unit, trees > 0 ? `${fmtBRL(finalPrice)} ÷ ${trees}` : "Sem árvores", "PRECO");
+  const unitPrice = trees > 0 ? finalPrice.div(trees) : dec(0);
+  calc.add("precoUnitario", `Preço por ${unit.one}`, unitPrice, trees > 0 ? `${fmtBRL(finalPrice)} ÷ ${trees}` : `Sem ${unit.many}`, "PRECO");
   const net = finalPrice.mul(D.sub(1, t));
   const effectiveMargin = net.isZero() ? dec(0) : net.minus(operational).div(net);
   if (method === "LEGACY_PODA")
     calc.warn("PODA_LEGADO", "Metodologia legada da poda (planilha): o preço final não aplica a margem — margem efetiva ≈ 0%. Veja Administração › Precificação.");
-  return { margin: m, tax: t, priceBeforeTax, finalPrice, unit, effectiveMargin };
+  return { margin: m, tax: t, priceBeforeTax, finalPrice, unit: unitPrice, effectiveMargin };
 }
 
 export function buildResult(args: {
   service: ServiceCode; engineVersion: EngineVersion; calc: Calc;
-  common: ReturnType<typeof commonBlock>; costs: Record<string, DecimalT>; baseCost: DecimalT;
+  common: Pick<ReturnType<typeof commonBlock>, "days" | "baseDays" | "extraDays" | "prod" | "technicians" | "techCharged" | "persons">; costs: Record<string, DecimalT>; baseCost: DecimalT;
   serviceTypeFactor?: DecimalT; mods?: ReturnType<typeof modifiersBlock>; afterModifiers: DecimalT;
   operational: DecimalT; price: ReturnType<typeof priceBlock>; method: "STANDARD" | "LEGACY_PODA"; auxiliaries: number;
   details?: Record<string, string | number | null>;
@@ -243,7 +259,7 @@ export function buildResult(args: {
 }
 
 /** Faixa de licenciamento (divisor/horas) conforme a quantidade de árvores. */
-export function licenseTier(p: PricingParams, service: ServiceCode, trees: number) {
+export function licenseTier(p: PricingParams, service: CoreServiceCode, trees: number) {
   const tiers = p.services[service].licenseTiers ?? [];
   const t = tiers.find((x) => trees >= x.minTrees && (x.maxTrees === null || trees <= x.maxTrees)) ?? tiers[tiers.length - 1];
   if (!t) throw new EngineError("Faixas de licenciamento não configuradas.");

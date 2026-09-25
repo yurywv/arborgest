@@ -68,6 +68,7 @@ async function checkSector(propertyId: string, sectorId: string | null) {
 
 export async function saveTree(id: string | null, _: ActionState, fd: FormData): Promise<ActionState> {
   let code = "";
+  const makeLabel = !id && fd.get("makeLabel") === "on";
   const res = await runAction(async () => {
     const user = await assertPermission("trees:write");
     const data = splitAddress(treeSchema.parse(formObject(fd, ["conflicts"])), "addressNumber");
@@ -85,9 +86,10 @@ export async function saveTree(id: string | null, _: ActionState, fd: FormData):
         await refreshTreeCache(t.id);
       }
       await audit(user.id, "CREATE", "Tree", t.id, code);
+      if (makeLabel) await audit(user.id, "QRCODE", "Tree", t.id, `Etiqueta QR Code gerada — ${code}`);
     }
   });
-  return finish(res, `/arvores/${code}`);
+  return finish(res, makeLabel ? `/arvores/${code}/qrcode?nova=1` : `/arvores/${code}`);
 }
 
 const locationSchema = z.object({ ...location, address: optStr(300), addressNumber: optStr(20), physicalRef: optStr(300) }).refine(latLngPair, pairMsg);
