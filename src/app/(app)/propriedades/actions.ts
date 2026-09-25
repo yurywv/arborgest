@@ -1,6 +1,5 @@
 "use server";
 
-import { splitAddress } from "@/lib/address";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { assertPermission } from "@/lib/auth/session";
@@ -37,7 +36,7 @@ export async function saveProperty(id: string | null, _: ActionState, fd: FormDa
   let savedId = id;
   const res = await runAction(async () => {
     const user = await assertPermission("properties:write");
-    const data = splitAddress(schema.parse(formObject(fd)), "number");
+    const data = schema.parse(formObject(fd));
     const p = id ? await db.property.update({ where: { id }, data }) : await db.property.create({ data });
     savedId = p.id;
     await audit(user.id, id ? "UPDATE" : "CREATE", "Property", p.id, p.name);

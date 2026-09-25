@@ -1,6 +1,5 @@
 "use server";
 
-import { splitAddress } from "@/lib/address";
 import { z } from "zod";
 import { TreeStatus } from "@prisma/client";
 import { db } from "@/lib/db";
@@ -71,7 +70,7 @@ export async function saveTree(id: string | null, _: ActionState, fd: FormData):
   const makeLabel = !id && fd.get("makeLabel") === "on";
   const res = await runAction(async () => {
     const user = await assertPermission("trees:write");
-    const data = splitAddress(treeSchema.parse(formObject(fd, ["conflicts"])), "addressNumber");
+    const data = treeSchema.parse(formObject(fd, ["conflicts"]));
     await checkSector(data.propertyId, data.sectorId);
     if (id) {
       const t = await db.tree.update({ where: { id }, data });
@@ -98,7 +97,7 @@ export async function saveTreeLocation(id: string, _: ActionState, fd: FormData)
   let code = "";
   const res = await runAction(async () => {
     const user = await assertPermission("trees:write");
-    const data = splitAddress(locationSchema.parse(formObject(fd)), "addressNumber");
+    const data = locationSchema.parse(formObject(fd));
     if (data.latitude === null) throw new UserError("Capture ou informe as coordenadas.");
     const t = await db.tree.update({ where: { id }, data });
     code = t.code;

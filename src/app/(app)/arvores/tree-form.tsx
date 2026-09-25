@@ -34,7 +34,7 @@ export function TreeForm({
 
       <FormSection title="Localização" description="WGS84 / EPSG:4326. Em campo, use o botão para capturar pelo GPS do celular.">
         <LocationInput value={{ ...t, gpsCapturedAt: t.gpsCapturedAt ? new Date(t.gpsCapturedAt).toISOString() : null }} fallback={fallback} />
-        <Field name="address" label="Logradouro" defaultValue={t.address} hint="Sem o número." />
+        <Field name="address" label="Logradouro" defaultValue={t.address} />
         <Field name="addressNumber" label="Número" defaultValue={t.addressNumber} />
         <Field name="physicalRef" label="Referência física" defaultValue={t.physicalRef} wrapClassName="sm:col-span-2" />
       </FormSection>

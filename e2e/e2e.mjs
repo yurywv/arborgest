@@ -55,14 +55,19 @@ try {
   check("validação de formulário (obrigatório + CNPJ)", true);
   await fill("Razão social / nome", `Condomínio Teste E2E ${stamp}`);
   await fill("CPF/CNPJ", "");
-  await fill("Logradouro", "Rua das Acácias, 250");
+  await fill("Logradouro", "Rua das Acácias");
   await fill("Cidade", "Campinas");
   await select("Estado", "SP");
   await save();
   await page.waitForURL(/\/clientes\/c[a-z0-9]+$/); await ready();
   const clientUrl = page.url();
   await go(`${clientUrl}/editar`);
-  check("número do endereço separado do logradouro", (await lbl("Logradouro").inputValue()) === "Rua das Acácias" && (await lbl("Número").inputValue()) === "250");
+  check("logradouro salvo sem número (número é campo independente e opcional)",
+    (await lbl("Logradouro").inputValue()) === "Rua das Acácias" && (await lbl("Número").inputValue()) === "");
+  await fill("Número", "250");
+  await save();
+  await page.waitForURL(clientUrl); await ready();
+  check("número informado no campo próprio", (await page.locator("main").textContent()).includes("Rua das Acácias, 250"));
   await go(clientUrl);
   check("cliente criado", (await page.getByRole("heading", { level: 1 }).textContent())?.includes("Teste E2E") ?? false);
 
