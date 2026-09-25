@@ -6,7 +6,7 @@ import { db } from "@/lib/db";
 import { assertPermission } from "@/lib/auth/session";
 import { audit } from "@/lib/audit";
 import { nextContractNumber } from "@/lib/counters";
-import { enumVals, formObject, keysOf, optDate, optEnum, optId, optNum, optStr, reqDate, reqEnum, reqStr, runAction, fieldError, finish } from "@/lib/actions";
+import { enumVals, formObject, keysOf, optDate, optEnum, optId, optNum, optStr, reqDate, reqEnum, reqStr, runAction, fieldError, finish, UserError } from "@/lib/actions";
 import { PERIODICITY } from "@/lib/catalogs";
 import type { ActionState } from "@/lib/action-state";
 
@@ -46,6 +46,10 @@ export async function saveContract(id: string | null, _: ActionState, fd: FormDa
 export async function deleteContract(id: string): Promise<ActionState> {
   return runAction(async () => {
     const user = await assertPermission("contracts:delete");
+    const kept = await db.commercialProposal.count({ where: { contractId: id, OR: [{ sentAt: { not: null } }, { status: { in: ["ENVIADA", "ACEITA"] } }] } });
+    if (kept) throw new UserError("O contrato tem propostas enviadas ou aceitas, que precisam ficar no histórico do cliente. Altere o status para Cancelado ou Encerrado.");
+    // Os documentos anexados continuam no histórico do cliente (o vínculo com o contrato é removido).
+    await db.document.updateMany({ where: { contractId: id, clientId: null }, data: { clientId: (await db.contract.findUniqueOrThrow({ where: { id } })).clientId } });
     const c = await db.contract.delete({ where: { id } });
     await audit(user.id, "DELETE", "Contract", id, c.number);
   });

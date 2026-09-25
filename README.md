@@ -248,6 +248,7 @@ npm run start                                       # em outro terminal
 npm run test:unit                                   # Pricing Engine: fórmulas, políticas e paridade com o Excel (vitest)
 npm run test:smoke -- http://localhost:3000         # 133 rotas + permissões dos 6 perfis + exportações
 npm run test:e2e:pricing -- http://localhost:3000   # fluxo de precificação completo (orçamento → proposta → aceite → contrato/OS)
+npm run test:e2e:contracts -- http://localhost:3000 # propostas em PDF no contrato, anexos e histórico do cliente
 npx playwright install chromium                     # uma vez
 SERVER_LOG=caminho/do/log npm run test:e2e -- http://localhost:3000 e2e/screenshots
 ```

@@ -70,11 +70,30 @@ export function adjustedItemPrice(r: CalcResult, adj: ItemAdjustments) {
   return { price, cost, margin: effectiveMargin(price, cost, tax), marginSource: present(adj.priceOverride) ? "PRECO" : present(adj.marginOverride) ? "ITEM" : present(adj.estimateMargin) ? "ORCAMENTO" : "PADRAO" };
 }
 
+export type CommissionBase = "TOTAL" | "PROFIT";
+export const COMMISSION_BASE_LABEL: Record<CommissionBase, string> = {
+  TOTAL: "Valor total da proposta",
+  PROFIT: "Margem de lucro (excluídos os impostos)",
+};
+
 export interface EstimateTotalsInput {
   items: { calculatedPrice: DecimalT; negotiatedPrice: DecimalT; cost: DecimalT }[];
   tax: DecimalT;
   discountType?: "PERCENT" | "AMOUNT" | null;
   discountValue?: DecimalT | null;
+  /** Comissão (fração ≥ 0 e < 1) — custo interno; não altera o preço da proposta. */
+  commission?: { percent: DecimalT; base: CommissionBase } | null;
+}
+
+/**
+ * Comissão sobre:
+ *  - TOTAL: valor total da proposta (preço negociado, como vendido ao cliente);
+ *  - PROFIT: margem de lucro excluídos os impostos = receita − impostos − custo operacional (nunca negativa).
+ */
+export function commissionAmount(percent: DecimalT, base: CommissionBase, revenue: DecimalT, profit: DecimalT) {
+  validateMargin(percent, "Comissão");
+  const b = base === "TOTAL" ? revenue : D.max(profit, 0);
+  return money(b.mul(percent));
 }
 
 export function estimateTotals(t: EstimateTotalsInput) {
@@ -91,7 +110,14 @@ export function estimateTotals(t: EstimateTotalsInput) {
     discountAmount = money(t.discountValue);
   }
   const negotiatedTotal = itemsTotal.minus(discountAmount);
+  const profit = negotiatedTotal.mul(D.sub(1, t.tax)).minus(cost);
+  const commission = t.commission ? commissionAmount(t.commission.percent, t.commission.base, negotiatedTotal, profit) : dec(0);
+  const net = negotiatedTotal.mul(D.sub(1, t.tax));
+  const resultAfterCommission = profit.minus(commission);
   return {
+    commission,
+    resultAfterCommission,
+    marginAfterCommission: net.isZero() ? dec(0) : resultAfterCommission.div(net),
     calculatedTotal,
     itemsTotal,
     discountAmount,
@@ -100,7 +126,7 @@ export function estimateTotals(t: EstimateTotalsInput) {
     calculatedMargin: effectiveMargin(calculatedTotal, cost, t.tax),
     effectiveMargin: effectiveMargin(negotiatedTotal, cost, t.tax),
     discountPercentVsCalculated: calculatedTotal.isZero() ? dec(0) : calculatedTotal.minus(negotiatedTotal).div(calculatedTotal),
-    profit: negotiatedTotal.mul(D.sub(1, t.tax)).minus(cost),
+    profit,
     taxAmount: negotiatedTotal.mul(t.tax),
   };
 }

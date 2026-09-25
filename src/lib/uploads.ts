@@ -73,3 +73,6 @@ export function validateDocument(buf: Buffer, fileName: string, declaredMime: st
   void declaredMime;
   return { mimeType: mime, key: `docs/${datePrefix()}/${rand()}-${safeFileName(fileName)}` };
 }
+
+/** Chaves de documentos enviados direto do navegador para o Vercel Blob (arquivos acima do limite de 4,5 MB das funções). */
+export const DIRECT_DOC_KEY = /^docs\/direto\/\d{4}-\d{2}\/[a-f0-9]{24}-[a-z0-9._-]{1,120}$/;

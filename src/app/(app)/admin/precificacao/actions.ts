@@ -1,21 +1,21 @@
 "use server";
 
+import { auditedRun } from "@/lib/pricing/audited-action";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { assertPermission } from "@/lib/auth/session";
 import { audit } from "@/lib/audit";
-import { runAction, UserError } from "@/lib/actions";
+import { UserError } from "@/lib/actions";
 import type { ActionState } from "@/lib/action-state";
 import { diffParams, parseParams } from "@/lib/pricing/params-schema";
 import { publishParamsVersion } from "@/lib/pricing/store-core";
 import { getActiveVersion, paramsOf, pricingAudit } from "@/lib/pricing/server";
-import { PROPOSAL_TEXT_DEFAULTS, type ProposalTextKey } from "@/lib/pricing/proposal-texts";
 import { formObject, keysOf, optStr, reqEnum, reqStr } from "@/lib/actions";
 import { UFS } from "@/lib/catalogs";
 
 /** Publica nova versão de parâmetros. Nunca altera versões anteriores (orçamentos antigos não mudam). */
 export async function publishParams(json: string, description: string, v2Validation: { confirmed: boolean; note: string } | null): Promise<ActionState> {
-  return runAction(async () => {
+  return auditedRun("publishParams", null, async () => {
     const user = await assertPermission("pricing:params");
     const desc = z.string().trim().min(5, "Descreva o motivo da alteração (mínimo 5 caracteres).").max(500).parse(description);
     const params = parseParams(JSON.parse(json));
@@ -45,20 +45,8 @@ export async function publishParams(json: string, description: string, v2Validat
   });
 }
 
-export async function saveProposalTexts(_: ActionState, fd: FormData): Promise<ActionState> {
-  return runAction(async () => {
-    const user = await assertPermission("pricing:params");
-    for (const k of Object.keys(PROPOSAL_TEXT_DEFAULTS) as ProposalTextKey[]) {
-      const v = String(fd.get(k) ?? "").trim().slice(0, 4000);
-      await db.setting.upsert({ where: { key: k }, create: { key: k, value: v }, update: { value: v } });
-    }
-    await pricingAudit(db, user.id, "TEXTOS_PROPOSTA", "Setting", null, { justification: "Textos padrão da proposta atualizados" });
-    return { ok: true, message: "Textos padrão salvos." };
-  });
-}
-
 export async function toggleService(code: string, active: boolean): Promise<ActionState> {
-  return runAction(async () => {
+  return auditedRun("toggleService", null, async () => {
     const user = await assertPermission("pricing:params");
     const s = await db.pricingService.update({ where: { code }, data: { active } });
     await pricingAudit(db, user.id, "SERVICO", "PricingService", s.id, { field: "active", previousValue: !active, newValue: active });
@@ -82,7 +70,7 @@ const ruleSchema = z.object({
 });
 
 export async function saveCompensationRule(id: string | null, _: ActionState, fd: FormData): Promise<ActionState> {
-  return runAction(async () => {
+  return auditedRun("saveCompensationRule", null, async () => {
     const user = await assertPermission("pricing:params");
     const d = ruleSchema.parse(formObject(fd));
     const data = { ...d, seedlingsPerTree: String(d.seedlingsPerTree), freightValue: d.freightValue === null ? null : String(d.freightValue) };
@@ -98,7 +86,7 @@ export async function saveCompensationRule(id: string | null, _: ActionState, fd
 }
 
 export async function toggleCompensationRule(id: string, active: boolean): Promise<ActionState> {
-  return runAction(async () => {
+  return auditedRun("toggleCompensationRule", null, async () => {
     const user = await assertPermission("pricing:params");
     const r = await db.compensationRule.update({ where: { id }, data: { active } });
     await pricingAudit(db, user.id, "LEI_MUNICIPAL_ALTERADA", "CompensationRule", id, { field: "active", previousValue: !active, newValue: active, justification: `${r.city}/${r.state}` });

@@ -77,12 +77,12 @@ export function LocationInput({ value, fallback, simple }: { value?: LocationVal
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="block">
           <span className="label">Latitude (WGS84)</span>
-          <input name="latitude" inputMode="decimal" className={`input ${errors?.latitude ? "input-error" : ""}`} value={lat} onChange={(e) => { setLat(e.target.value); setSource(source || "MANUAL"); }} placeholder="-22.9056000" />
+          <input name="latitude" inputMode="decimal" className={`input ${errors?.latitude ? "input-error" : ""}`} value={lat} onChange={(e) => { setLat(e.target.value); setSource(source || "MANUAL"); }} />
           {errors?.latitude && <span className="mt-1 block text-xs text-red-600">{errors.latitude}</span>}
         </label>
         <label className="block">
           <span className="label">Longitude (WGS84)</span>
-          <input name="longitude" inputMode="decimal" className={`input ${errors?.longitude ? "input-error" : ""}`} value={lng} onChange={(e) => { setLng(e.target.value); setSource(source || "MANUAL"); }} placeholder="-47.0608000" />
+          <input name="longitude" inputMode="decimal" className={`input ${errors?.longitude ? "input-error" : ""}`} value={lng} onChange={(e) => { setLng(e.target.value); setSource(source || "MANUAL"); }} />
           {errors?.longitude && <span className="mt-1 block text-xs text-red-600">{errors.longitude}</span>}
         </label>
         {!simple && (<>

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { formatAddress } from "@/lib/address";
 import { redirect } from "next/navigation";
 import { Building2, Calculator, MapPinned, Search, Trees } from "lucide-react";
 import { db } from "@/lib/db";
@@ -34,7 +35,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
   return (
     <>
       <PageHeader title={`Resultados para “${q}”`} subtitle={`${total} resultado(s)`} />
-      {total === 0 && <EmptyState icon={Search} title="Nada encontrado" description="Tente o código da árvore (ex.: 12 ou ARB-000012), a espécie, o cliente ou o endereço." />}
+      {total === 0 && <EmptyState icon={Search} title="Nada encontrado" description="Busque pelo código da árvore, espécie, cliente ou endereço." />}
       <div className="grid gap-4 lg:grid-cols-3">
         {trees.length > 0 && (
           <Card title={<span className="flex items-center gap-2"><Trees className="size-4" /> Árvores ({trees.length})</span>} className="lg:col-span-2">
@@ -43,7 +44,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
                 <li key={t.id} className="flex items-center justify-between gap-2 py-2">
                   <div className="min-w-0">
                     <Link className="link font-mono" href={`/arvores/${t.code}`}>{t.code}</Link> <span className="text-sm">{t.species?.popularName ?? "—"}</span>
-                    <p className="truncate text-xs text-stone-500">{t.species?.scientificName} · {t.property.name} · {t.address ?? ""}</p>
+                    <p className="truncate text-xs text-stone-500">{t.species?.scientificName} · {t.property.name} · {formatAddress({ address: t.address, number: t.addressNumber }, { withCity: false })}</p>
                   </div>
                   <div className="flex gap-1"><TreeStatusBadge value={t.status} /><ConditionBadge value={t.currentCondition} /></div>
                 </li>
@@ -64,7 +65,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
           )}
           {properties.length > 0 && (
             <Card title={<span className="flex items-center gap-2"><MapPinned className="size-4" /> Propriedades</span>}>
-              <ul className="space-y-2">{properties.map((p) => <li key={p.id}><Link className="link" href={`/propriedades/${p.id}`}>{p.name}</Link><p className="text-xs text-stone-500">{p.client.tradeName ?? p.client.legalName} · {p.address}</p></li>)}</ul>
+              <ul className="space-y-2">{properties.map((p) => <li key={p.id}><Link className="link" href={`/propriedades/${p.id}`}>{p.name}</Link><p className="text-xs text-stone-500">{p.client.tradeName ?? p.client.legalName} · {formatAddress({ address: p.address, number: p.number, city: p.city, state: p.state })}</p></li>)}</ul>
             </Card>
           )}
         </div>

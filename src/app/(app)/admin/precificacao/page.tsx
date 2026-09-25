@@ -1,24 +1,28 @@
 import Link from "next/link";
 import { FileCheck2 } from "lucide-react";
+import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
+import { pageOf, spFlat, spGet, type SP } from "@/lib/query";
+import { AUDIT_ACTION } from "@/lib/pricing/labels";
+import { FilterForm, FilterSelect } from "@/components/filters";
 import { requirePermission } from "@/lib/auth/session";
 import { fmtDateTime } from "@/lib/format";
 import { diffParams } from "@/lib/pricing/params-schema";
 import { getActiveVersion, paramsOf } from "@/lib/pricing/server";
-import { getProposalTexts } from "@/lib/pricing/proposal-texts-server";
 import { ENGINE_LABEL } from "@/lib/pricing/types";
 import { ActionButton } from "@/components/form";
-import { Badge, Card, LinkButton, PageHeader, TabLinks } from "@/components/ui";
+import { Badge, Card, LinkButton, PageHeader, Pagination, TabLinks } from "@/components/ui";
 import { ParamsEditor } from "./params-editor";
-import { CompensationRuleForm, EditCompensationRule, ProposalTextsForm } from "./forms";
+import { CompensationRuleForm, EditCompensationRule } from "./forms";
 import { toggleCompensationRule, toggleService } from "./actions";
 import { fmtBRL, fmtN } from "@/lib/pricing/decimal";
 
 export const metadata = { title: "Parâmetros de precificação" };
 
-export default async function PricingAdminPage({ searchParams }: { searchParams: Promise<{ aba?: string }> }) {
+export default async function PricingAdminPage({ searchParams }: { searchParams: Promise<SP> }) {
   await requirePermission("pricing:params");
-  const { aba = "parametros" } = await searchParams;
+  const sp = await searchParams;
+  const aba = spGet(sp, "aba") ?? "parametros";
   const active = await getActiveVersion();
   return (
     <>
@@ -29,16 +33,16 @@ export default async function PricingAdminPage({ searchParams }: { searchParams:
       />
       <TabLinks active={aba} baseHref="/admin/precificacao" tabs={[
         { key: "parametros", label: "Parâmetros gerais" }, { key: "versoes", label: "Versões" },
-        { key: "compensacao", label: "Compensação municipal" }, { key: "textos", label: "Textos da proposta" }, { key: "servicos", label: "Serviços" },
+        { key: "compensacao", label: "Compensação municipal" }, { key: "servicos", label: "Serviços" }, { key: "auditoria", label: "Auditoria" },
       ]} />
       {aba === "parametros" && (
         <ParamsEditor initial={paramsOf(active)} versionLabel={active.label}
           v2Validated={!!(await db.pricingParameterVersion.count({ where: { v2ValidatedAt: { not: null } } }))} />
       )}
       {aba === "versoes" && <Versions />}
-      {aba === "textos" && <div className="max-w-3xl"><ProposalTextsForm values={await getProposalTexts()} /></div>}
       {aba === "servicos" && <Services />}
       {aba === "compensacao" && <CompensationRules />}
+      {aba === "auditoria" && <AuditTrail sp={sp} />}
     </>
   );
 }
@@ -124,5 +128,57 @@ async function CompensationRules() {
       </Card>
       <Card title="Nova lei municipal"><CompensationRuleForm /></Card>
     </div>
+  );
+}
+
+/** Trilha completa da Precificação: toda ação (inclusive tentativas recusadas), com usuário, data, valores e justificativa. */
+async function AuditTrail({ sp }: { sp: SP }) {
+  const action = spGet(sp, "acao");
+  const userId = spGet(sp, "usuario");
+  const from = spGet(sp, "de");
+  const to = spGet(sp, "ate");
+  const { page, pageSize, skip, take } = pageOf(sp, 50);
+  const where: Prisma.PricingAuditLogWhereInput = {
+    ...(action && { action }),
+    ...(userId && { userId }),
+    ...((from || to) && { createdAt: { ...(from && { gte: new Date(`${from}T00:00:00`) }), ...(to && { lte: new Date(`${to}T23:59:59`) }) } }),
+  };
+  const [rows, total, users, actions] = await Promise.all([
+    db.pricingAuditLog.findMany({ where, skip, take, orderBy: { createdAt: "desc" }, include: { user: { select: { name: true } }, estimate: { select: { id: true, number: true } } } }),
+    db.pricingAuditLog.count({ where }),
+    db.user.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } }),
+    db.pricingAuditLog.groupBy({ by: ["action"], _count: { _all: true } }),
+  ]);
+  const short = (v: string | null) => (v && v.length > 220 ? v.slice(0, 220) + "…" : v);
+  return (
+    <>
+      <FilterForm>
+        <input type="hidden" name="aba" value="auditoria" />
+        <FilterSelect name="acao" label="Ação" value={action} options={actions.map((a) => ({ value: a.action, label: `${AUDIT_ACTION[a.action] ?? a.action} (${a._count._all})` }))} />
+        <FilterSelect name="usuario" label="Usuário" value={userId} options={users.map((u) => ({ value: u.id, label: u.name }))} />
+        <label className="min-w-36"><span className="mb-0.5 block text-[11px] font-medium text-stone-500">De</span><input type="date" name="de" defaultValue={from} className="input min-h-10 py-1.5" /></label>
+        <label className="min-w-36"><span className="mb-0.5 block text-[11px] font-medium text-stone-500">Até</span><input type="date" name="ate" defaultValue={to} className="input min-h-10 py-1.5" /></label>
+        <button className="btn btn-secondary btn-sm min-h-10">Filtrar</button>
+      </FilterForm>
+      <Card title={`Registros (${total})`} bodyClassName="p-0">
+        <ul className="divide-y divide-stone-100">
+          {rows.map((l) => (
+            <li key={l.id} className="px-4 py-2.5 text-sm">
+              <div className="flex flex-wrap justify-between gap-2">
+                <span><b className={l.action === "TENTATIVA_RECUSADA" ? "text-red-700" : ""}>{AUDIT_ACTION[l.action] ?? l.action}</b>
+                  {l.estimate && <> · <Link className="link" href={`/precificacao/${l.estimate.id}?aba=historico`}>{l.estimate.number}</Link></>}
+                  {!l.estimate && l.entity !== "Precificacao" && <span className="text-xs text-stone-500"> · {l.entity}</span>}</span>
+                <span className="text-xs text-stone-500">{fmtDateTime(l.createdAt)} · {l.user?.name ?? "Sistema"}{l.ip ? ` · ${l.ip}` : ""}</span>
+              </div>
+              {l.field && <div className="text-xs text-stone-600">{l.field}</div>}
+              {(l.previousValue || l.newValue) && <div className="text-xs text-stone-600">{l.previousValue && <span className="line-through">{short(l.previousValue)}</span>} {l.newValue && <>→ {short(l.newValue)}</>}</div>}
+              {l.justification && <div className="text-xs text-stone-500">{l.action === "TENTATIVA_RECUSADA" ? "Motivo da recusa" : "Justificativa"}: {l.justification}</div>}
+            </li>
+          ))}
+          {!rows.length && <li className="px-4 py-3 text-sm text-stone-500">Nenhum registro.</li>}
+        </ul>
+      </Card>
+      <Pagination page={page} pageSize={pageSize} total={total} searchParams={spFlat(sp)} basePath="/admin/precificacao" />
+    </>
   );
 }

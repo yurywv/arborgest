@@ -1,17 +1,20 @@
 import Link from "next/link";
+import { formatAddress } from "@/lib/address";
 import { notFound } from "next/navigation";
-import { Pencil, Plus, Trash2, Phone, Mail, MessageCircle, Globe } from "lucide-react";
+import { Pencil, Plus, Trash2, Phone, Mail, MessageCircle, Globe, FileDown } from "lucide-react";
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/auth/session";
 import { hasPermission } from "@/lib/auth/permissions";
-import { CLIENT_STATUS, CLIENT_TYPES, CONTRACT_STATUS, OPPORTUNITY_STAGE, PROPERTY_TYPES, SEGMENTS, WORK_ORDER_STATUS, labelOf } from "@/lib/catalogs";
+import { CLIENT_STATUS, CLIENT_TYPES, CONTRACT_STATUS, DOCUMENT_TYPES, OPPORTUNITY_STAGE, PROPERTY_TYPES, SEGMENTS, WORK_ORDER_STATUS, labelOf } from "@/lib/catalogs";
 import { fmtDate, fmtMoney, formatDocument, whatsappLink } from "@/lib/format";
 import { Badge, Card, ContactTypeBadge, DataList, FlowStatusBadge, LinkButton, PageHeader, TabLinks } from "@/components/ui";
 import { ActionButton } from "@/components/form";
 import { DocumentList } from "@/components/files/panels";
 import { DocumentUploader } from "@/components/files/uploaders";
 import { deleteClient } from "../actions";
-import { ESTIMATE_STATUS, ESTIMATE_STATUS_TONE } from "@/lib/pricing/labels";
+import { ESTIMATE_STATUS, ESTIMATE_STATUS_TONE, PROPOSAL_STATUS, PROPOSAL_STATUS_TONE } from "@/lib/pricing/labels";
+import { fileUrl } from "@/lib/files";
+import { ClientHistory, type HistoryEvent } from "./history";
 
 export const metadata = { title: "Cliente" };
 
@@ -30,10 +33,26 @@ export default async function ClientDetail({ params, searchParams }: { params: P
       contracts: { orderBy: { startDate: "desc" } },
       pricingEstimates: { orderBy: { createdAt: "desc" }, take: 50, select: { id: true, number: true, title: true, status: true, negotiatedTotal: true, date: true } },
       workOrders: { orderBy: { createdAt: "desc" }, take: 30 },
-      documents: { orderBy: { createdAt: "desc" }, include: { uploadedBy: { select: { name: true } } } },
     },
   });
   if (!c) notFound();
+  // Documentos do cliente, inclusive os anexados em contratos e propostas dele.
+  const documents = await db.document.findMany({
+    where: { OR: [{ clientId: id }, { contract: { clientId: id } }, { proposal: { clientId: id } }] },
+    orderBy: { createdAt: "desc" },
+    include: { uploadedBy: { select: { name: true } }, proposal: { select: { number: true } }, contract: { select: { id: true, number: true } } },
+  });
+  const canPricing = can("pricing:read");
+  const canContracts = can("contracts:read");
+  const proposals = await db.commercialProposal.findMany({
+    where: { clientId: id, OR: [...(canPricing ? [{ estimateId: { not: null } }] : []), ...(canContracts ? [{ contractId: { not: null } }] : [])] },
+    orderBy: [{ date: "desc" }, { version: "desc" }],
+    select: {
+      id: true, number: true, version: true, title: true, status: true, date: true, total: true, sentAt: true, sentTo: true, acceptedAt: true, acceptedBy: true,
+      contractId: true, estimateId: true, contract: { select: { number: true } }, estimate: { select: { number: true } },
+    },
+  });
+  const proposalHref = (p: (typeof proposals)[number]) => (p.contractId ? `/contratos/${p.contractId}/propostas/${p.id}` : `/precificacao/${p.estimateId}?aba=proposta&p=${p.id}`);
   const treeCount = c.properties.reduce((s, p) => s + p._count.trees, 0);
 
   const tabs = [
@@ -43,8 +62,31 @@ export default async function ClientDetail({ params, searchParams }: { params: P
     ...(can("pricing:read") ? [{ key: "orcamentos", label: "Orçamentos", count: c.pricingEstimates.length }] : []),
     { key: "contratos", label: "Contratos", count: c.contracts.length },
     { key: "os", label: "Ordens de serviço", count: c.workOrders.length },
-    { key: "documentos", label: "Documentos", count: c.documents.length },
+    { key: "documentos", label: "Documentos", count: documents.length },
+    { key: "historico", label: "Histórico" },
   ];
+
+  const history: HistoryEvent[] = tab !== "historico" ? [] : [
+    ...proposals.flatMap((p): HistoryEvent[] => [
+      { at: p.date, kind: "proposta", title: `Proposta ${p.number}${p.version > 1 ? ` (versão ${p.version})` : ""} emitida`, detail: `${p.title} · ${fmtMoney(p.total)}${p.contract ? ` · contrato ${p.contract.number}` : p.estimate ? ` · orçamento ${p.estimate.number}` : ""}`,
+        href: proposalHref(p), pdf: `/api/propostas/${p.id}/pdf`, status: { label: PROPOSAL_STATUS[p.status], tone: PROPOSAL_STATUS_TONE[p.status] } },
+      ...(p.sentAt ? [{ at: p.sentAt, kind: "envio" as const, title: `Proposta ${p.number} enviada`, detail: p.sentTo ?? "Envio registrado", href: proposalHref(p) }] : []),
+      ...(p.acceptedAt ? [{ at: p.acceptedAt, kind: "aceite" as const, title: `Proposta ${p.number} aceita`, detail: p.acceptedBy ?? "", href: proposalHref(p) }] : []),
+    ]),
+    ...(canContracts ? c.contracts.map((k): HistoryEvent => ({
+      at: k.createdAt, kind: "contrato", title: `Contrato ${k.number} cadastrado`, detail: `${fmtDate(k.startDate)} a ${fmtDate(k.endDate)} · ${fmtMoney(k.value)} · ${k.object}`,
+      href: `/contratos/${k.id}`, status: { label: CONTRACT_STATUS[k.status], tone: k.status === "ATIVO" ? "green" : "gray" },
+    })) : []),
+    ...(canPricing ? c.pricingEstimates.map((e): HistoryEvent => ({
+      at: e.date, kind: "orcamento", title: `Orçamento ${e.number}`, detail: `${fmtMoney(e.negotiatedTotal)}${e.title ? ` · ${e.title}` : ""}`,
+      href: `/precificacao/${e.id}`, status: { label: ESTIMATE_STATUS[e.status], tone: ESTIMATE_STATUS_TONE[e.status] },
+    })) : []),
+    ...documents.map((d): HistoryEvent => ({
+      at: d.createdAt, kind: "documento", title: `${labelOf(DOCUMENT_TYPES, d.type)}: ${d.fileName}`,
+      detail: [d.proposal && `proposta ${d.proposal.number}`, d.contract && `contrato ${d.contract.number}`, d.description, d.uploadedBy && `por ${d.uploadedBy.name}`].filter(Boolean).join(" · "),
+      href: fileUrl(d.storageKey), external: true,
+    })),
+  ].sort((a, b) => +new Date(b.at) - +new Date(a.at));
 
   return (
     <>
@@ -82,7 +124,7 @@ export default async function ClientDetail({ params, searchParams }: { params: P
                 ["Telefone", c.phone && <a className="link" href={`tel:${c.phone}`}>{c.phone}</a>],
                 ["E-mail", c.email && <a className="link" href={`mailto:${c.email}`}>{c.email}</a>],
                 ["Site", c.website && <a className="link" href={c.website} target="_blank" rel="noopener noreferrer"><Globe className="inline size-3.5" /> {c.website}</a>],
-                ["Endereço", [c.address, c.district, c.city && `${c.city}/${c.state ?? ""}`, c.zipCode].filter(Boolean).join(" · ")],
+                ["Endereço", formatAddress({ address: c.address, number: c.addressNumber, complement: c.addressComplement, district: c.district, city: c.city, state: c.state, zipCode: c.zipCode })],
                 ["Observações", c.notes],
               ]}
             />
@@ -123,7 +165,7 @@ export default async function ClientDetail({ params, searchParams }: { params: P
                 <li key={p.id} className="flex items-center justify-between gap-3 py-2.5">
                   <div className="min-w-0">
                     <Link href={`/propriedades/${p.id}`} className="link">{p.name}</Link>
-                    <p className="truncate text-xs text-stone-500">{labelOf(PROPERTY_TYPES, p.propertyType)} · {[p.address, p.city].filter(Boolean).join(", ")}</p>
+                    <p className="truncate text-xs text-stone-500">{labelOf(PROPERTY_TYPES, p.propertyType)} · {formatAddress({ address: p.address, number: p.number, city: p.city, state: p.state })}</p>
                   </div>
                   <Badge tone="green">{p._count.trees} árvores</Badge>
                 </li>
@@ -170,6 +212,7 @@ export default async function ClientDetail({ params, searchParams }: { params: P
       )}
 
       {tab === "contratos" && (
+        <div className="space-y-4">
         <Card title="Contratos" actions={can("contracts:write") && <LinkButton size="sm" href={`/contratos/novo?clientId=${id}`} icon={Plus}>Novo contrato</LinkButton>}>
           {c.contracts.length === 0 ? <p className="text-sm text-stone-500">Nenhum contrato.</p> : (
             <ul className="divide-y divide-stone-100">
@@ -185,6 +228,23 @@ export default async function ClientDetail({ params, searchParams }: { params: P
             </ul>
           )}
         </Card>
+        <Card title="Propostas">
+          {proposals.length === 0 ? <p className="text-sm text-stone-500">Nenhuma proposta.</p> : (
+            <ul className="divide-y divide-stone-100" data-testid="client-proposals">
+              {proposals.map((p) => (
+                <li key={p.id} className="flex items-center gap-2 py-2.5">
+                  <div className="min-w-0 flex-1">
+                    <Link href={proposalHref(p)} className="link">{p.number}{p.version > 1 ? ` · v${p.version}` : ""}</Link>
+                    <p className="truncate text-xs text-stone-500">{fmtDate(p.date)} · {fmtMoney(p.total)} · {p.title}{p.contract ? ` · contrato ${p.contract.number}` : p.estimate ? ` · orçamento ${p.estimate.number}` : ""}</p>
+                  </div>
+                  <Badge tone={PROPOSAL_STATUS_TONE[p.status]}>{PROPOSAL_STATUS[p.status]}</Badge>
+                  <a href={`/api/propostas/${p.id}/pdf`} target="_blank" rel="noopener noreferrer" className="btn btn-ghost btn-sm" aria-label={`PDF da proposta ${p.number}`}><FileDown className="size-4" /></a>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+        </div>
       )}
 
       {tab === "os" && (
@@ -205,9 +265,11 @@ export default async function ClientDetail({ params, searchParams }: { params: P
       {tab === "documentos" && (
         <Card title="Documentos">
           {can("files:write") && <div className="mb-4"><DocumentUploader refs={{ clientId: id }} /></div>}
-          <DocumentList docs={c.documents} canDelete={can("files:delete")} />
+          <DocumentList docs={documents} canDelete={can("files:delete")} />
         </Card>
       )}
+
+      {tab === "historico" && <ClientHistory events={history} />}
     </>
   );
 }

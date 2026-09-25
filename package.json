@@ -21,7 +21,8 @@
     "postinstall": "prisma generate",
     "test:unit": "vitest run",
     "pricing:parity": "tsx scripts/pricing-parity/generate-excel-fixtures.mts",
-    "test:e2e:pricing": "node e2e/pricing.mjs"
+    "test:e2e:pricing": "node e2e/pricing.mjs",
+    "test:e2e:contracts": "node e2e/contracts.mjs"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

@@ -68,7 +68,7 @@ export function Scanner() {
         <button onClick={start} className="btn btn-primary min-h-14 w-full text-base"><Camera className="size-5" /> Abrir câmera</button>
       )}
       <form
-        className="card flex gap-2 p-3"
+        className="card flex items-end gap-2 p-3"
         onSubmit={(e) => {
           e.preventDefault();
           const code = extractCode(manual) ?? (/^\d+$/.test(manual.trim()) ? `ARB-${manual.trim().padStart(6, "0")}` : null);
@@ -76,7 +76,8 @@ export function Scanner() {
           else router.push(`/busca?q=${encodeURIComponent(manual)}`);
         }}
       >
-        <input value={manual} onChange={(e) => setManual(e.target.value)} className="input" placeholder="Ou digite o código (ex.: 12 ou ARB-000012)" inputMode="text" />
+        <label className="min-w-0 flex-1"><span className="mb-0.5 block text-xs font-medium text-stone-500">Código da árvore (digitação manual)</span>
+          <input value={manual} onChange={(e) => setManual(e.target.value)} className="input" inputMode="text" autoComplete="off" /></label>
         <button className="btn btn-secondary" aria-label="Buscar"><Search className="size-4" /></button>
       </form>
     </div>

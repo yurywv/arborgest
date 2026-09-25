@@ -35,7 +35,7 @@ export default async function SpeciesPage({ searchParams }: { searchParams: Prom
     <>
       <PageHeader title="Espécies" subtitle={`Catálogo botânico · ${total} espécie(s)`} actions={canWrite && <LinkButton href="/especies/nova" variant="primary" icon={Plus}>Nova espécie</LinkButton>} />
       <FilterForm>
-        <SearchBox defaultValue={q} placeholder="Nome popular, científico, família ou região" />
+        <SearchBox defaultValue={q} />
         <FilterSelect name="origem" label="Origem" options={SPECIES_ORIGIN} value={origin} />
         <FilterSelect name="invasora" label="Invasora" options={[{ value: "sim", label: "Sim" }, { value: "nao", label: "Não" }]} value={invasive} />
         <FilterSelect name="uso" label="Árvores" options={[{ value: "com", label: "Com árvores" }, { value: "sem", label: "Sem árvores" }]} value={used} />

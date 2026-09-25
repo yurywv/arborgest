@@ -75,7 +75,10 @@ export function ParamsEditor({ initial: rawInitial, versionLabel, v2Validated }:
             <div className="mt-3 space-y-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
               <p><b>Validação administrativa obrigatória.</b> Revise o comparativo legado × padronizado em <a className="link" href="/admin/precificacao/validacao" target="_blank">Validação da lógica legada</a> antes de ativar o v2. {v2Validated && "(Já houve validação anterior registrada.)"}</p>
               <label className="flex items-start gap-2"><input type="checkbox" className="mt-0.5 size-4" checked={v2ok} onChange={(e) => setV2ok(e.target.checked)} /> Declaro que analisei o comparativo e aprovo o motor v2.</label>
-              <textarea className="input" rows={2} placeholder="Resumo da análise (mínimo 10 caracteres)" value={v2note} onChange={(e) => setV2note(e.target.value)} />
+              <label className="block">
+                <span className="label">Resumo da análise do comparativo (mínimo 10 caracteres)</span>
+                <textarea className="input" rows={2} value={v2note} onChange={(e) => setV2note(e.target.value)} />
+              </label>
             </div>
           )}
         </fieldset>
@@ -144,7 +147,6 @@ export function ParamsEditor({ initial: rawInitial, versionLabel, v2Validated }:
                     <td key={d}>
                       {s === "INVENTARIO" && d === 4 ? <span className="text-stone-400">—</span> : (
                         <input aria-label={`${s} ${DIFFICULTY_LABEL[d]}`} className="input min-h-9 w-24 py-1" inputMode="decimal" value={p.services[s].productivity[d] ?? ""}
-                          placeholder={d === 4 ? "não usado" : ""}
                           onChange={(e) => upd((x) => {
                             const v = norm(e.target.value);
                             if (d === 4 && v === "") delete x.services[s].productivity[4];
@@ -226,7 +228,10 @@ export function ParamsEditor({ initial: rawInitial, versionLabel, v2Validated }:
             </ul>
           </details>
         )}
-        <input className="input" placeholder="Descrição/motivo da nova versão (obrigatório)" value={desc} onChange={(e) => setDesc(e.target.value)} />
+        <label className="block">
+          <span className="label">Descrição/motivo da nova versão <span className="text-red-600">*</span></span>
+          <input className="input" autoComplete="off" value={desc} onChange={(e) => setDesc(e.target.value)} />
+        </label>
         {msg && <p role="alert" className={clsx("rounded-lg px-3 py-2 text-sm", msg.ok ? "bg-emerald-50 text-emerald-800" : "bg-red-50 text-red-800")}>{msg.text}</p>}
         <div className="flex flex-wrap gap-2">
           <button type="button" className="btn btn-primary" disabled={pending || !changes.length || !validation.success || desc.trim().length < 5} onClick={submit}>
@@ -260,7 +265,7 @@ function TierTable({ svc, p, upd }: { svc: Svc; p: PricingParams; upd: (fn: (d: 
           {tiers.map((t, i) => (
             <tr key={i}>
               <td><input className="input min-h-9 w-20 py-1" inputMode="numeric" value={t.minTrees} onChange={(e) => upd((d) => { d.services[svc].licenseTiers![i].minTrees = Number(e.target.value) || 0; })} /></td>
-              <td><input className="input min-h-9 w-20 py-1" inputMode="numeric" placeholder="sem limite" value={t.maxTrees ?? ""} onChange={(e) => upd((d) => { d.services[svc].licenseTiers![i].maxTrees = e.target.value === "" ? null : Number(e.target.value); })} /></td>
+              <td><input className="input min-h-9 w-20 py-1" inputMode="numeric" value={t.maxTrees ?? ""} onChange={(e) => upd((d) => { d.services[svc].licenseTiers![i].maxTrees = e.target.value === "" ? null : Number(e.target.value); })} /></td>
               <td><input className="input min-h-9 w-20 py-1" inputMode="decimal" value={t.divisor} onChange={(e) => upd((d) => { d.services[svc].licenseTiers![i].divisor = norm(e.target.value); })} /></td>
               <td><input className="input min-h-9 w-20 py-1" inputMode="decimal" value={t.hours} onChange={(e) => upd((d) => { d.services[svc].licenseTiers![i].hours = norm(e.target.value); })} /></td>
               <td>{tiers.length > 1 && <button type="button" aria-label="Remover faixa" className="btn btn-ghost btn-sm" onClick={() => upd((d) => { d.services[svc].licenseTiers!.splice(i, 1); })}><Trash2 className="size-3.5" /></button>}</td>

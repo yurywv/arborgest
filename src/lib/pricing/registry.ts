@@ -11,7 +11,6 @@ import { calcSupressao } from "./services/supressao";
 import { calcPoda } from "./services/poda";
 import { EngineError } from "./engine";
 import { normalizeParams } from "./defaults";
-import { fmtBRL, fmtN } from "./decimal";
 import type { CalcResult, PricingParams, ServiceCode, ServiceInputs } from "./types";
 
 const intMsg = (label: string) => ({ error: `${label}: informe um número inteiro.` });
@@ -70,43 +69,36 @@ export const INPUT_SCHEMAS = {
   }),
 } satisfies Record<ServiceCode, z.ZodType>;
 
-export type FieldKind = "int" | "decimal" | "money" | "bool" | "text" | "select" | "difficulty" | "serviceType" | "modifiers" | "compensationRule";
+export type FieldKind = "int" | "decimal" | "money" | "bool" | "yesno" | "text" | "select" | "difficulty" | "serviceType" | "modifiers" | "compensationRule";
 export type FieldSection = "QUANTIDADE" | "LOGISTICA" | "REGIONAL" | "OPERACAO" | "SERVICO" | "COMPENSACAO" | "FRETE" | "ACOMPANHAMENTO" | "MODIFICADORES";
 export type FieldDef = {
   key: string; label: string; kind: FieldKind; section: FieldSection; suffix?: string; hint?: string;
-  /** Campo opcional: vazio = padrão dos parâmetros (mostrado como placeholder). */
+  /** Campo opcional: vazio = valor padrão dos parâmetros (ou regra automática). */
   optional?: boolean;
-  placeholder?: (p: PricingParams) => string;
   /** Exibe só quando outro campo tem o valor indicado (ex.: cacamba = true). */
   showIf?: { key: string; equals: unknown };
   options?: { value: string; label: string }[];
 };
 
-const padrao = (v: string) => `Padrão ${fmtBRL(v)}`;
 const BASE_FIELDS: FieldDef[] = [
   { key: "trees", label: "Árvores", kind: "int", section: "QUANTIDADE" },
   { key: "distanceKm", label: "Distância ida + volta", kind: "decimal", section: "LOGISTICA", suffix: "km" },
   { key: "toll", label: "Pedágio (por dia/viagem)", kind: "money", section: "LOGISTICA", suffix: "R$" },
   { key: "lodging", label: "Hospedagem", kind: "bool", section: "LOGISTICA" },
-  { key: "mealCost", label: "Alimentação por pessoa/dia", kind: "money", section: "REGIONAL", suffix: "R$", optional: true,
-    placeholder: (p) => padrao(p.general.alimentacaoPessoaDia), hint: "Valor da região do projeto. Em branco = padrão." },
-  { key: "lodgingCost", label: "Hospedagem por pessoa/dia", kind: "money", section: "REGIONAL", suffix: "R$", optional: true,
-    placeholder: (p) => padrao(p.general.hospedagemPessoaDia), hint: "Usado quando há hospedagem." },
+  { key: "mealCost", label: "Alimentação por pessoa/dia", kind: "money", section: "REGIONAL", suffix: "R$", optional: true, hint: "Valor da região do projeto. Em branco, usa o valor padrão dos parâmetros." },
+  { key: "lodgingCost", label: "Hospedagem por pessoa/dia", kind: "money", section: "REGIONAL", suffix: "R$", optional: true, hint: "Usado quando há hospedagem. Em branco, usa o valor padrão dos parâmetros." },
   { key: "difficulty", label: "Dificuldade", kind: "difficulty", section: "OPERACAO" },
   { key: "auxiliaries", label: "Auxiliares", kind: "int", section: "OPERACAO" },
 ];
 const CACAMBA_FIELDS: FieldDef[] = [
   { key: "cacamba", label: "Utiliza caçamba", kind: "bool", section: "SERVICO" },
-  { key: "cacambaQty", label: "Quantidade de caçambas", kind: "int", section: "SERVICO", optional: true, showIf: { key: "cacamba", equals: true },
-    placeholder: () => "Automático", hint: "Em branco = calculada pela regra de árvores por caçamba." },
-  { key: "cacambaUnitPrice", label: "Preço unitário da caçamba", kind: "money", section: "SERVICO", suffix: "R$", optional: true, showIf: { key: "cacamba", equals: true },
-    placeholder: (p) => padrao(p.general.cacamba), hint: "Varia conforme a região." },
+  { key: "cacambaQty", label: "Quantidade de caçambas", kind: "int", section: "SERVICO", optional: true, showIf: { key: "cacamba", equals: true }, hint: "Em branco = calculada pela regra de árvores por caçamba." },
+  { key: "cacambaUnitPrice", label: "Preço unitário da caçamba", kind: "money", section: "SERVICO", suffix: "R$", optional: true, showIf: { key: "cacamba", equals: true }, hint: "Em branco, usa o valor padrão dos parâmetros." },
 ];
 const SUPERVISION_FIELDS: FieldDef[] = [
-  { key: "supervision", label: "Acompanhamento técnico", kind: "bool", section: "ACOMPANHAMENTO",
+  { key: "supervision", label: "Haverá acompanhamento técnico?", kind: "yesno", section: "ACOMPANHAMENTO",
     hint: "Profissional presente na operação: diária, alimentação, hospedagem e transporte." },
-  { key: "supervisionDays", label: "Dias de acompanhamento", kind: "decimal", section: "ACOMPANHAMENTO", optional: true, showIf: { key: "supervision", equals: true },
-    placeholder: () => "Dias da operação", hint: "Em branco = mesmos dias da operação." },
+  { key: "supervisionDays", label: "Dias de acompanhamento", kind: "decimal", section: "ACOMPANHAMENTO", optional: true, showIf: { key: "supervision", equals: true }, hint: "Em branco = mesmos dias da operação." },
 ];
 
 export type ServiceDef = {
@@ -144,17 +136,14 @@ export const SERVICES: Record<ServiceCode, ServiceDef> = {
       { key: "compensationRule", label: "Lei municipal (cadastro)", kind: "compensationRule", section: "COMPENSACAO", showIf: { key: "compensation", equals: true } },
       { key: "compensationCity", label: "Município", kind: "text", section: "COMPENSACAO", optional: true, showIf: { key: "compensation", equals: true } },
       { key: "compensationLaw", label: "Lei aplicável (citação)", kind: "text", section: "COMPENSACAO", optional: true, showIf: { key: "compensation", equals: true },
-        hint: "Ex.: Lei Municipal nº 0000/2020, art. 5º." },
-      { key: "seedlings", label: "Mudas a plantar", kind: "int", section: "COMPENSACAO", optional: true, showIf: { key: "compensation", equals: true },
-        placeholder: (p) => `Automático: árvores × ${fmtN(p.services.SUPRESSAO.compensacao?.unidadesPorArvore ?? 0)}`, hint: "Quantidade exigida pela lei do município." },
-      { key: "seedlingUnitPrice", label: "Valor por muda", kind: "money", section: "COMPENSACAO", suffix: "R$", optional: true, showIf: { key: "compensation", equals: true },
-        placeholder: (p) => padrao(p.services.SUPRESSAO.compensacao?.valorUnidade ?? "0") },
+        hint: "Número e artigo da lei do município." },
+      { key: "seedlings", label: "Mudas a plantar", kind: "int", section: "COMPENSACAO", optional: true, showIf: { key: "compensation", equals: true }, hint: "Quantidade exigida pela lei do município." },
+      { key: "seedlingUnitPrice", label: "Valor por muda", kind: "money", section: "COMPENSACAO", suffix: "R$", optional: true, showIf: { key: "compensation", equals: true } },
       { key: "freightMode", label: "Frete", kind: "select", section: "FRETE",
-        options: [{ value: "NONE", label: "Sem frete" }, { value: "FIXED", label: "Valor por cidade (informado)" }, { value: "CALC", label: "Calcular por distância e peso" }] },
+        options: [{ value: "", label: "Sem frete" }, { value: "FIXED", label: "Valor por cidade (informado)" }, { value: "CALC", label: "Calcular por distância e peso" }] },
       { key: "freightValue", label: "Valor do frete", kind: "money", section: "FRETE", suffix: "R$", optional: true, showIf: { key: "freightMode", equals: "FIXED" } },
       { key: "freightDistanceKm", label: "Distância do frete", kind: "decimal", section: "FRETE", suffix: "km", optional: true, showIf: { key: "freightMode", equals: "CALC" } },
-      { key: "freightWeightKg", label: "Peso transportado", kind: "decimal", section: "FRETE", suffix: "kg", optional: true, showIf: { key: "freightMode", equals: "CALC" },
-        placeholder: (p) => `Automático: mudas × ${fmtN(p.services.SUPRESSAO.frete?.pesoPorMudaKg ?? 0)} kg` },
+      { key: "freightWeightKg", label: "Peso transportado", kind: "decimal", section: "FRETE", suffix: "kg", optional: true, showIf: { key: "freightMode", equals: "CALC" } },
       ...SUPERVISION_FIELDS,
       { key: "modifiers", label: "Modificadores", kind: "modifiers", section: "MODIFICADORES" },
     ],

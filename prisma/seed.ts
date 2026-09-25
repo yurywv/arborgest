@@ -13,7 +13,6 @@ import { applyPricingParamMigrations, ensurePricingSetup } from "../src/lib/pric
 import { persistCalculation, recomputeEstimate } from "../src/lib/pricing/estimate-core";
 import { calculate, SERVICES } from "../src/lib/pricing/registry";
 import { dec, money } from "../src/lib/pricing/decimal";
-import { PROPOSAL_TEXT_DEFAULTS } from "../src/lib/pricing/proposal-texts";
 import type { PricingParams, ServiceCode } from "../src/lib/pricing/types";
 import type { PricingEstimateStatus, ProposalStatus } from "@prisma/client";
 
@@ -33,6 +32,16 @@ const between = (a: number, b: number, d = 1) => Math.round((a + rnd() * (b - a)
 const pickN = <T,>(a: readonly T[], n: number) => [...a].sort(() => rnd() - 0.5).slice(0, n);
 const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000);
 const daysAhead = (n: number) => new Date(Date.now() + n * 86_400_000);
+
+// Textos das propostas de demonstração (dados fictícios; no sistema a proposta é redigida pelo usuário)
+const DEMO_PROPOSAL = {
+  proposal_payment_terms: "50% na aprovação e 50% na conclusão, mediante nota fiscal.",
+  proposal_deadline: "Início em até 15 dias após o aceite.",
+  proposal_conditions: "Valores com impostos inclusos.",
+  proposal_assumptions: "Acesso livre às áreas de trabalho em horário comercial.",
+  proposal_exclusions: "Taxas de órgãos públicos e serviços não descritos.",
+  proposal_responsibilities: "Execução conforme NBR 16246; ART quando aplicável.",
+};
 
 // Espécies usadas nas árvores de demonstração (todas presentes no catálogo de referência)
 const DEMO_SPECIES = [
@@ -117,7 +126,7 @@ async function main() {
     data: {
       legalName: "Condomínio Residencial Jardim das Paineiras", tradeName: "Jardim das Paineiras", document: "11222333000181",
       clientType: "CONDOMINIO", segment: "CONDOMINIO_RESIDENCIAL", phone: "(19) 3251-1000", email: "sindico@paineiras.demo",
-      address: "Rua das Paineiras, 1200", district: "Parque Taquaral", city: "Campinas", state: "SP", zipCode: "13087-000",
+      address: "Rua das Paineiras", addressNumber: "1200", district: "Parque Taquaral", city: "Campinas", state: "SP", zipCode: "13087-000",
       status: "ATIVO", notes: "Contrato anual de manejo. Assembleia em março.",
       contacts: {
         create: [
@@ -132,7 +141,7 @@ async function main() {
     data: {
       legalName: "Metalúrgica Vale Verde Ltda.", tradeName: "Vale Verde Metais", document: "45723174000110", clientType: "PJ",
       segment: "INDUSTRIA", phone: "(19) 3809-4400", email: "facilities@valeverde.demo", website: "https://valeverde.demo",
-      address: "Rod. SP-101, km 8", district: "Distrito Industrial", city: "Hortolândia", state: "SP", zipCode: "13186-000",
+      address: "Rod. SP-101", addressNumber: "km 8", district: "Distrito Industrial", city: "Hortolândia", state: "SP", zipCode: "13186-000",
       status: "ATIVO",
       contacts: {
         create: [
@@ -148,7 +157,7 @@ async function main() {
     data: {
       legalName: "Prefeitura Municipal de Vila Serena", tradeName: "PM Vila Serena", document: "46523015000135", clientType: "ORGAO_PUBLICO",
       segment: "PREFEITURA", phone: "(19) 3700-1000", email: "meioambiente@vilaserena.demo",
-      address: "Praça da Matriz, s/n", district: "Centro", city: "Vila Serena", state: "SP", zipCode: "13100-000",
+      address: "Praça da Matriz", addressNumber: "s/n", district: "Centro", city: "Vila Serena", state: "SP", zipCode: "13100-000",
       status: "ATIVO", notes: "Contratação via ata de registro de preços.",
       contacts: { create: [{ name: "Helena Duarte", type: "ADMINISTRATIVO", jobTitle: "Secretária de Meio Ambiente", phone: "(19) 3700-1020", email: "helena@vilaserena.demo", isPrimary: true }] },
     },
@@ -177,7 +186,7 @@ async function main() {
   const propDefs = [
     { client: c1, name: "Condomínio Jardim das Paineiras", type: "CONDOMINIO", lat: -22.8712, lng: -47.0485, city: "Campinas", district: "Parque Taquaral", address: "Rua das Paineiras", number: "1200", manager: "Sr. Antônio (zelador)", area: 42000,
       sectors: [["Bloco A", -22.8707, -47.0490], ["Estacionamento Norte", -22.8702, -47.0478], ["Área de lazer", -22.8718, -47.0482]] },
-    { client: c2, name: "Planta Hortolândia", type: "INDUSTRIA", lat: -22.8580, lng: -47.2200, city: "Hortolândia", district: "Distrito Industrial", address: "Rod. SP-101, km 8", number: "s/n", manager: "Patrícia Souza", area: 98000,
+    { client: c2, name: "Planta Hortolândia", type: "INDUSTRIA", lat: -22.8580, lng: -47.2200, city: "Hortolândia", district: "Distrito Industrial", address: "Rod. SP-101", number: "km 8", manager: "Patrícia Souza", area: 98000,
       sectors: [["Estacionamento Norte", -22.8574, -47.2206], ["Área Verde 1", -22.8588, -47.2192], ["Portaria", -22.8578, -47.2212]] },
     { client: c2, name: "Centro de Distribuição Sumaré", type: "INDUSTRIA", lat: -22.8210, lng: -47.2670, city: "Sumaré", district: "Jardim Industrial", address: "Av. das Indústrias", number: "450", manager: "Eduardo Nunes", area: 36000,
       sectors: [["Pátio de manobras", -22.8206, -47.2676], ["Área Verde 2", -22.8215, -47.2663]] },
@@ -238,7 +247,7 @@ async function main() {
           code, status, propertyId: prop.id, sectorId: sector.id, responsibleId: pick(techs).id, speciesId: sp.id,
           identificationConfidence: pick(["ALTA", "ALTA", "MEDIA"]),
           latitude: lat, longitude: lng, gpsAccuracy: between(3, 12, 1), altitude: between(580, 700, 0), gpsCapturedAt: daysAgo(400 - treeNo),
-          coordSource: "GPS_DISPOSITIVO", address: `${prop.address}, ${prop.number} — ${prop.city}/SP`,
+          coordSource: "GPS_DISPOSITIVO", address: prop.address, addressNumber: prop.number,
           physicalRef: pick(["Junto ao meio-fio", "Próxima ao portão principal", "Canteiro lateral", "Ao lado do poste", "Centro do gramado"]),
           siteType: siteByProp[pi], pavementType: pick(["NENHUM", "CONCRETO", "INTERTRAVADO", "ASFALTO"]),
           permeableArea: between(1, 12), sidewalkWidth: pi === 3 ? between(2, 4) : null, bedWidth: between(0.8, 2.5), bedLength: between(1, 3),
@@ -460,8 +469,8 @@ async function main() {
             validUntil: new Date(date.getTime() + 30 * 86_400_000), clientId: o.clientId, contactId: o.contactId, propertyId: o.propertyId,
             title: `Proposta — ${o.title}`, object: `Prestação de serviços de ${items.map((i) => `${SERVICES[i.serviceCode as ServiceCode].name.toLowerCase()} (${i.quantity} árvores)`).join(", ")}.`,
             scope: items.map((i) => `• ${SERVICES[i.serviceCode as ServiceCode].name}: ${i.quantity} exemplar(es) — ${i.description}.`).join("\n"),
-            deadline: PROPOSAL_TEXT_DEFAULTS.proposal_deadline, paymentTerms: PROPOSAL_TEXT_DEFAULTS.proposal_payment_terms, conditions: PROPOSAL_TEXT_DEFAULTS.proposal_conditions,
-            assumptions: PROPOSAL_TEXT_DEFAULTS.proposal_assumptions, exclusions: PROPOSAL_TEXT_DEFAULTS.proposal_exclusions, responsibilities: PROPOSAL_TEXT_DEFAULTS.proposal_responsibilities,
+            deadline: DEMO_PROPOSAL.proposal_deadline, paymentTerms: DEMO_PROPOSAL.proposal_payment_terms, conditions: DEMO_PROPOSAL.proposal_conditions,
+            assumptions: DEMO_PROPOSAL.proposal_assumptions, exclusions: DEMO_PROPOSAL.proposal_exclusions, responsibilities: DEMO_PROPOSAL.proposal_responsibilities,
             subtotal: t.itemsTotal, discountAmount: t.discountAmount, total: t.negotiatedTotal, createdById: o.owner.id,
             ...(o.proposal !== "EMITIDA" && { sentAt: daysAgo(o.ago - 2) }), ...(o.proposal === "ACEITA" && { acceptedAt: daysAgo(Math.max(o.ago - 6, 0)) }),
             items: {
@@ -508,6 +517,18 @@ async function main() {
   await seedEstimate({
     clientId: c3.id, propertyId: props[3].id, title: "Poda de limpeza — Praça Central", status: "RASCUNHO", ago: 1, owner: gestor, techId: tecnico.id,
     items: [{ service: "PODA", description: "Poda de limpeza", inputs: { trees: 12, distanceKm: 25, difficulty: 1, auxiliaries: 2, lodging: false, toll: 0, serviceType: 2, license: true, cacamba: true, fuelLiters: 8, modifiers: [] } }],
+  });
+  // Proposta emitida em Contratos (aditivo do contrato da planta industrial), enviada ao cliente.
+  const ct2 = await db.contract.findUniqueOrThrow({ where: { number: "CT-2026-0002" } });
+  await db.commercialProposal.create({
+    data: {
+      number: `PROP-${year}-${String(++propSeq).padStart(5, "0")}`, contractId: ct2.id, status: "ENVIADA", date: daysAgo(5), validUntil: daysAhead(25),
+      clientId: ct2.clientId, contactId: c2Contact?.id, propertyId: ct2.propertyId, title: "Aditivo — monitoramento trimestral de risco",
+      object: "Inclusão de monitoramento trimestral de risco dos exemplares de alto risco da planta, com relatório técnico.",
+      deadline: DEMO_PROPOSAL.proposal_deadline, paymentTerms: DEMO_PROPOSAL.proposal_payment_terms,
+      subtotal: 14400, discountAmount: 0, total: 14400, createdById: comercial.id, sentAt: daysAgo(4), sentTo: c2Contact?.email ?? null,
+      items: { create: [{ order: 0, serviceCode: "CONTRATO", title: "Monitoramento trimestral de risco", description: "Vistoria, avaliação de risco e relatório", quantity: 4, unit: "trimestre", unitPrice: 3600, total: 14400 }] },
+    },
   });
   await db.counter.createMany({ data: [{ key: `estimate:${year}`, value: estSeq }, { key: `proposal:${year}`, value: propSeq }] });
 

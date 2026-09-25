@@ -34,7 +34,7 @@ export default async function PropertiesPage({ searchParams }: { searchParams: P
     <>
       <PageHeader title="Propriedades" subtitle="Locais atendidos e seus setores" actions={hasPermission(user.permissions, "properties:write") && <LinkButton href="/propriedades/nova" variant="primary" icon={Plus}>Nova propriedade</LinkButton>} />
       <FilterForm>
-        <SearchBox defaultValue={q} placeholder="Nome, endereço, bairro, cidade" />
+        <SearchBox defaultValue={q} />
         <FilterSelect name="cliente" label="Cliente" options={clients} value={clientId} />
         <FilterSelect name="tipo" label="Tipo" options={PROPERTY_TYPES} value={type} />
       </FilterForm>

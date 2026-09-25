@@ -30,7 +30,7 @@ export function MeasurementFields({ prefix = "", showDate = true, showNotes = tr
       <NumberField name={p("dap")} label="DAP — diâmetro" suffix="cm" value={calcDap ? String(calcDap).replace(".", ",") : dap} onChange={(e) => setDap(e.target.value)} readOnly={!!calcDap}
         className={calcDap ? "bg-brand-50 font-semibold" : ""} hint={calcDap ? (stemList.length > 1 ? "DAP equivalente √Σd² (multifuste)" : "Calculado: DAP = CAP / π") : undefined} />
       <NumberField name={p("stemCount")} label="Número de fustes" decimals={false} defaultValue="1" />
-      <Field name={p("stemDaps")} label="DAP de cada fuste (cm)" placeholder="Ex.: 32; 28,5; 15" value={stems} onChange={(e) => setStems(e.target.value)} hint="Separe por ponto e vírgula ou espaço." />
+      <Field name={p("stemDaps")} label="DAP de cada fuste (cm)" value={stems} onChange={(e) => setStems(e.target.value)} hint="Separe por ponto e vírgula ou espaço." />
       <NumberField name={p("totalHeight")} label="Altura total" suffix="m" />
       <NumberField name={p("stemHeight")} label="Altura do fuste" suffix="m" />
       <NumberField name={p("crownBaseHeight")} label="Altura do início da copa" suffix="m" />

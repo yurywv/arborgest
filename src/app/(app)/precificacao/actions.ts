@@ -1,18 +1,21 @@
 "use server";
 
+import { auditedRun } from "@/lib/pricing/audited-action";
 import { z } from "zod";
 import type { PricingEstimateStatus, Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { assertPermission, type CurrentUser } from "@/lib/auth/session";
 import { audit } from "@/lib/audit";
 import { nextContractNumber, nextWorkOrderNumber } from "@/lib/counters";
-import { finish, formObject, optDate, optId, optStr, reqStr, runAction, UserError } from "@/lib/actions";
+import { finish, formObject, optDate, optId, optStr, reqStr, UserError } from "@/lib/actions";
 import type { ActionState } from "@/lib/action-state";
 import { dec, fmtPct } from "@/lib/pricing/decimal";
-import { APPROVAL_LABEL, assertNonNegativeMargin, grantableLevel, levelCovers, validateMargin, type ApprovalLevelCode } from "@/lib/pricing/policy";
+import {
+  APPROVAL_LABEL, COMMISSION_BASE_LABEL, assertNonNegativeMargin, grantableLevel, levelCovers, validateMargin, type ApprovalLevelCode, type CommissionBase,
+} from "@/lib/pricing/policy";
 import { SERVICES, isServiceCode } from "@/lib/pricing/registry";
 import {
-  EDITABLE_STATUSES, calcResultOf, getActiveVersion, nextEstimateNumber, paramsOf, persistCalculation, pricingAudit,
+  calcResultOf, getActiveVersion, nextEstimateNumber, paramsOf, persistCalculation, pricingAudit,
   recomputeEstimate, serverCalculate,
 } from "@/lib/pricing/server";
 
@@ -22,29 +25,40 @@ const STATUS_LABEL: Record<string, string> = {
   ENVIADO_CLIENTE: "Enviado ao cliente", EM_NEGOCIACAO: "Em negociação", ACEITO: "Aceito", RECUSADO: "Recusado", CANCELADO: "Cancelado", EXPIRADO: "Expirado",
 };
 
+/** Qualquer orçamento pode ser aberto e editado (inclusive aceito, recusado, cancelado ou expirado). */
 async function loadEditable(tx: Tx | typeof db, id: string) {
-  const est = await tx.pricingEstimate.findUniqueOrThrow({ where: { id }, include: { parameterVersion: true } });
-  if (!(EDITABLE_STATUSES as readonly string[]).includes(est.status))
-    throw new UserError(`Orçamento ${STATUS_LABEL[est.status].toLowerCase()} não pode ser alterado. Duplique ou crie uma revisão.`);
-  return est;
+  return tx.pricingEstimate.findUniqueOrThrow({ where: { id }, include: { parameterVersion: true } });
 }
 
-/** Qualquer mudança de preço depois de aprovado/enviado exige nova aprovação. */
+const FINAL = ["ACEITO", "RECUSADO", "CANCELADO", "EXPIRADO"];
+
+/**
+ * Qualquer mudança de conteúdo/preço:
+ *  - depois de aprovado/enviado: exige nova aprovação;
+ *  - em status final (aceito, recusado, cancelado, expirado): reabre o orçamento para "Em elaboração";
+ *  - propostas emitidas e ainda não enviadas ficam como "substituídas" (as enviadas/aceitas permanecem no histórico).
+ * Tudo registrado na auditoria.
+ */
 async function invalidateApproval(tx: Tx, est: { id: string; status: PricingEstimateStatus }, userId: string, reason: string) {
-  const needs = ["EM_APROVACAO_INTERNA", "APROVADO_INTERNAMENTE", "ENVIADO_CLIENTE", "EM_NEGOCIACAO"].includes(est.status);
-  const next: PricingEstimateStatus = est.status === "RASCUNHO" ? "EM_ELABORACAO" : needs ? "EM_ELABORACAO" : est.status;
-  if (needs) {
+  const approvalFlow = ["EM_APROVACAO_INTERNA", "APROVADO_INTERNAMENTE", "ENVIADO_CLIENTE", "EM_NEGOCIACAO"].includes(est.status);
+  const reopen = FINAL.includes(est.status);
+  const next: PricingEstimateStatus = est.status === "RASCUNHO" || approvalFlow || reopen ? "EM_ELABORACAO" : est.status;
+  if (approvalFlow || reopen) {
     await tx.proposalApproval.updateMany({ where: { estimateId: est.id, status: "PENDENTE" }, data: { status: "CANCELADO", comment: reason } });
     await tx.pricingEstimate.update({ where: { id: est.id }, data: { approvedLevel: null, approvedAt: null } });
-    await pricingAudit(tx, userId, "APROVACAO_INVALIDADA", "PricingEstimate", est.id, { estimateId: est.id, field: "status", previousValue: est.status, newValue: next, justification: reason });
+    const stale = await tx.commercialProposal.updateMany({ where: { estimateId: est.id, status: "EMITIDA" }, data: { status: "SUBSTITUIDA" } });
+    await pricingAudit(tx, userId, reopen ? "REABERTURA" : "APROVACAO_INVALIDADA", "PricingEstimate", est.id, {
+      estimateId: est.id, field: "status", previousValue: est.status, newValue: next,
+      justification: `${reason}${stale.count ? ` — ${stale.count} proposta(s) emitida(s) marcada(s) como substituída(s)` : ""}`,
+    });
   }
-  if (next !== est.status) await tx.pricingEstimate.update({ where: { id: est.id }, data: { status: next } });
+  if (next !== est.status) await tx.pricingEstimate.update({ where: { id: est.id }, data: { status: next, ...(reopen && { closeReason: null }) } });
 }
 
 /** Nenhum ajuste pode deixar margem negativa — nem em um item nem no total do orçamento. */
 async function assertMargins(tx: Tx, estimateId: string, what: string) {
   const [est, items] = await Promise.all([
-    tx.pricingEstimate.findUniqueOrThrow({ where: { id: estimateId }, select: { effectiveMargin: true } }),
+    tx.pricingEstimate.findUniqueOrThrow({ where: { id: estimateId }, select: { effectiveMargin: true, marginAfterCommission: true } }),
     tx.pricingEstimateItem.findMany({ where: { estimateId }, select: { effectiveMargin: true, serviceCode: true, priceOverride: true, marginOverride: true, extraCost: true } }),
   ]);
   for (const i of items) {
@@ -53,6 +67,7 @@ async function assertMargins(tx: Tx, estimateId: string, what: string) {
     if (adjusted) assertNonNegativeMargin(dec(i.effectiveMargin.toString()), `${what} (${SERVICES[i.serviceCode as keyof typeof SERVICES]?.shortName ?? i.serviceCode})`);
   }
   if (est.effectiveMargin !== null) assertNonNegativeMargin(dec(est.effectiveMargin.toString()), what);
+  if (est.marginAfterCommission !== null) assertNonNegativeMargin(dec(est.marginAfterCommission.toString()), `${what}, descontada a comissão,`);
 }
 
 // ───────────────────────── Cabeçalho ─────────────────────────
@@ -87,7 +102,7 @@ async function checkLinks(d: z.infer<typeof headerSchema>) {
 
 export async function createEstimate(_: ActionState, fd: FormData): Promise<ActionState> {
   let id = "";
-  const res = await runAction(async () => {
+  const res = await auditedRun("createEstimate", null, async () => {
     const user = await assertPermission("pricing:write");
     const d = headerSchema.parse(formObject(fd));
     await checkLinks(d);
@@ -105,7 +120,6 @@ export async function createEstimate(_: ActionState, fd: FormData): Promise<Acti
       const e = await tx.pricingEstimate.create({
         data: {
           ...d, number, validUntil, parameterVersionId: version.id, createdById: user.id,
-          commercialOwnerId: d.commercialOwnerId ?? (user.permissions.includes("pricing:negotiate") ? user.id : null),
           taxRate: paramsOf(version).general.imposto,
           ...(margin && { marginOverride: margin.toDecimalPlaces(6).toString(), marginReason: "Margem de lucro definida na criação do orçamento" }),
         },
@@ -120,7 +134,7 @@ export async function createEstimate(_: ActionState, fd: FormData): Promise<Acti
 }
 
 export async function updateEstimateHeader(id: string, _: ActionState, fd: FormData): Promise<ActionState> {
-  const res = await runAction(async () => {
+  const res = await auditedRun("updateEstimateHeader", id, async () => {
     const user = await assertPermission("pricing:write");
     const d = headerSchema.parse(formObject(fd));
     await checkLinks(d);
@@ -152,7 +166,7 @@ const itemPayload = z.object({
 });
 
 export async function saveItem(estimateId: string, itemId: string | null, payloadJson: string): Promise<ActionState> {
-  const res = await runAction(async () => {
+  const res = await auditedRun("saveItem", estimateId, async () => {
     const user = await assertPermission("pricing:write");
     const p = itemPayload.parse(JSON.parse(payloadJson));
     if (!isServiceCode(p.service)) throw new UserError("Serviço inválido.");
@@ -206,7 +220,7 @@ export async function saveItem(estimateId: string, itemId: string | null, payloa
 }
 
 export async function deleteItem(estimateId: string, itemId: string): Promise<ActionState> {
-  return runAction(async () => {
+  return auditedRun("deleteItem", estimateId, async () => {
     const user = await assertPermission("pricing:write");
     await db.$transaction(async (tx) => {
       const est = await loadEditable(tx, estimateId);
@@ -235,7 +249,7 @@ const pct = (v: unknown) => parseNum(v)?.div(100) ?? null;
 const brl = (v: unknown) => parseNum(v);
 
 export async function adjustItem(estimateId: string, itemId: string, _: ActionState, fd: FormData): Promise<ActionState> {
-  return runAction(async () => {
+  return auditedRun("adjustItem", estimateId, async () => {
     const user = await assertPermission("pricing:negotiate");
     const f = formObject(fd);
     const reasonParsed = z.string().trim().min(5, "Informe o motivo (mínimo 5 caracteres).").max(1000).safeParse(f.adjustReason ?? "");
@@ -287,7 +301,7 @@ export async function adjustItem(estimateId: string, itemId: string, _: ActionSt
 }
 
 export async function setDiscount(estimateId: string, _: ActionState, fd: FormData): Promise<ActionState> {
-  return runAction(async () => {
+  return auditedRun("setDiscount", estimateId, async () => {
     const user = await assertPermission("pricing:negotiate");
     const f = formObject(fd);
     const type = f.discountType === "PERCENT" || f.discountType === "AMOUNT" ? f.discountType : null;
@@ -325,7 +339,7 @@ export async function setDiscount(estimateId: string, _: ActionState, fd: FormDa
 
 /** Margem de lucro do orçamento (aplicada a todos os itens sem margem/preço próprios). Nunca negativa. */
 export async function setEstimateMargin(estimateId: string, _: ActionState, fd: FormData): Promise<ActionState> {
-  return runAction(async (): Promise<ActionState> => {
+  return auditedRun("setEstimateMargin", estimateId, async (): Promise<ActionState> => {
     const user = await assertPermission("pricing:negotiate");
     const raw = String(fd.get("marginPercent") ?? "").trim();
     const reason = String(fd.get("marginReason") ?? "").trim();
@@ -362,10 +376,56 @@ export async function setEstimateMargin(estimateId: string, _: ActionState, fd: 
   });
 }
 
+/**
+ * Comissão do orçamento: percentual sobre o valor total da proposta ou sobre a margem de lucro (excluídos os impostos).
+ * Custo interno — não altera o preço nem aparece na proposta; reduz resultado e margem (alçada e trava de margem negativa).
+ */
+export async function setCommission(estimateId: string, _: ActionState, fd: FormData): Promise<ActionState> {
+  return auditedRun("setCommission", estimateId, async (): Promise<ActionState> => {
+    const user = await assertPermission("pricing:negotiate");
+    const raw = String(fd.get("commissionPercent") ?? "").trim();
+    const base = String(fd.get("commissionBase") ?? "") as CommissionBase;
+    const to = String(fd.get("commissionTo") ?? "").trim().slice(0, 150) || null;
+    const reason = String(fd.get("commissionReason") ?? "").trim();
+    let percent: ReturnType<typeof dec> | null = null;
+    if (raw) {
+      try { percent = validateMargin(pct(raw)!, "Comissão"); }
+      catch (e) { return { ok: false, message: (e as Error).message, errors: { commissionPercent: (e as Error).message } }; }
+      if (!(base in COMMISSION_BASE_LABEL)) return { ok: false, message: "Escolha a base da comissão.", errors: { commissionBase: "Escolha a base da comissão." } };
+    }
+    if (reason.length < 5) return { ok: false, message: "Informe o motivo.", errors: { commissionReason: "Informe o motivo (mínimo 5 caracteres)." } };
+    await db.$transaction(async (tx) => {
+      const est = await loadEditable(tx, estimateId);
+      const prev = { percentual: est.commissionPercent?.toString() ?? null, base: est.commissionBase, comissionado: est.commissionTo, valor: est.commissionAmount.toString() };
+      await tx.pricingEstimate.update({
+        where: { id: estimateId },
+        data: percent && !percent.isZero()
+          ? { commissionPercent: percent.toDecimalPlaces(6).toString(), commissionBase: base, commissionTo: to, commissionReason: reason }
+          : { commissionPercent: null, commissionBase: null, commissionTo: null, commissionReason: null },
+      });
+      const after = await recomputeEstimate(tx, estimateId);
+      await assertMargins(tx, estimateId, "Esta comissão");
+      await tx.pricingOverride.create({
+        data: {
+          estimateId, type: "COMISSAO", previousValue: prev.percentual, newValue: percent?.toString() ?? null, userId: user.id,
+          reason: `${reason}${percent ? ` — base: ${COMMISSION_BASE_LABEL[base]}${to ? `; comissionado: ${to}` : ""}` : " (comissão removida)"}`,
+          negotiatedPrice: after.negotiatedTotal, difference: dec(after.commissionAmount.toString()).neg().toString(),
+        },
+      });
+      await pricingAudit(tx, user.id, "COMISSAO", "PricingEstimate", estimateId, {
+        estimateId, field: "comissao", previousValue: prev,
+        newValue: { percentual: percent?.toString() ?? null, base: percent ? base : null, comissionado: to, valor: after.commissionAmount.toString() }, justification: reason,
+      });
+      await invalidateApproval(tx, est, user.id, "Comissão alterada");
+    });
+    return { ok: true, message: percent && !percent.isZero() ? `Comissão de ${fmtPct(percent)} sobre ${COMMISSION_BASE_LABEL[base].toLowerCase()} aplicada.` : "Comissão removida." };
+  });
+}
+
 // ───────────────────────── Aprovação ─────────────────────────
 
 export async function requestApproval(estimateId: string): Promise<ActionState> {
-  return runAction(async () => {
+  return auditedRun("requestApproval", estimateId, async () => {
     const user = await assertPermission("pricing:write");
     let msg = "";
     await db.$transaction(async (tx) => {
@@ -379,7 +439,7 @@ export async function requestApproval(estimateId: string): Promise<ActionState> 
       const auto = !params.approval.fluxoObrigatorio || levelCovers(mine, level);
       const approval = await tx.proposalApproval.create({
         data: {
-          estimateId, level, status: auto ? "APROVADO" : "PENDENTE", marginAtRequest: e.effectiveMargin ?? 0, totalAtRequest: e.negotiatedTotal,
+          estimateId, level, status: auto ? "APROVADO" : "PENDENTE", marginAtRequest: e.marginAfterCommission ?? e.effectiveMargin ?? 0, totalAtRequest: e.negotiatedTotal,
           requestedById: user.id, ...(auto && { decidedById: user.id, decidedAt: new Date(), comment: params.approval.fluxoObrigatorio ? "Aprovado dentro da alçada do solicitante" : "Fluxo de aprovação desativado" }),
         },
       });
@@ -389,7 +449,7 @@ export async function requestApproval(estimateId: string): Promise<ActionState> 
       });
       await pricingAudit(tx, user.id, auto ? "APROVACAO" : "SOLICITACAO_APROVACAO", "ProposalApproval", approval.id, {
         estimateId, field: "status", previousValue: est.status, newValue: auto ? "APROVADO_INTERNAMENTE" : "EM_APROVACAO_INTERNA",
-        justification: `Alçada ${APPROVAL_LABEL[level]} — margem ${fmtPct(e.effectiveMargin?.toString() ?? 0)}`,
+        justification: `Alçada ${APPROVAL_LABEL[level]} — margem ${fmtPct((e.marginAfterCommission ?? e.effectiveMargin)?.toString() ?? 0)}${e.marginAfterCommission !== null ? " (após comissão)" : ""}`,
       });
       msg = auto ? "Aprovado dentro da sua alçada." : `Enviado para aprovação ${APPROVAL_LABEL[level].toLowerCase()}.`;
     });
@@ -398,7 +458,7 @@ export async function requestApproval(estimateId: string): Promise<ActionState> 
 }
 
 export async function decideApproval(approvalId: string, approve: boolean, comment: string): Promise<ActionState> {
-  return runAction(async () => {
+  return auditedRun("decideApproval", null, async () => {
     const user = await assertPermission("pricing:read");
     await db.$transaction(async (tx) => {
       const a = await tx.proposalApproval.findUniqueOrThrow({ where: { id: approvalId }, include: { estimate: true } });
@@ -424,12 +484,12 @@ const TRANSITIONS: Record<string, PricingEstimateStatus[]> = {
   EM_NEGOCIACAO: ["ENVIADO_CLIENTE"],
   ACEITO: ["ENVIADO_CLIENTE", "EM_NEGOCIACAO", "APROVADO_INTERNAMENTE"],
   RECUSADO: ["ENVIADO_CLIENTE", "EM_NEGOCIACAO", "APROVADO_INTERNAMENTE"],
-  CANCELADO: ["RASCUNHO", "EM_ELABORACAO", "EM_APROVACAO_INTERNA", "APROVADO_INTERNAMENTE", "ENVIADO_CLIENTE", "EM_NEGOCIACAO"],
-  EM_ELABORACAO: ["RECUSADO", "EXPIRADO"],
+  CANCELADO: ["RASCUNHO", "EM_ELABORACAO", "EM_APROVACAO_INTERNA", "APROVADO_INTERNAMENTE", "ENVIADO_CLIENTE", "EM_NEGOCIACAO", "ACEITO", "RECUSADO", "EXPIRADO"],
+  EM_ELABORACAO: ["RECUSADO", "EXPIRADO", "CANCELADO", "ACEITO"],
 };
 
 export async function changeStatus(estimateId: string, target: PricingEstimateStatus, reason: string): Promise<ActionState> {
-  return runAction(async () => {
+  return auditedRun("changeStatus", estimateId, async () => {
     const user = await assertPermission("pricing:write");
     if (!TRANSITIONS[target]) throw new UserError("Transição não permitida.");
     if (["RECUSADO", "CANCELADO"].includes(target) && reason.trim().length < 5) throw new UserError("Informe o motivo (mínimo 5 caracteres).");
@@ -438,7 +498,7 @@ export async function changeStatus(estimateId: string, target: PricingEstimateSt
       if (!TRANSITIONS[target].includes(est.status)) throw new UserError(`Não é possível passar de "${STATUS_LABEL[est.status]}" para "${STATUS_LABEL[target]}".`);
       if (target === "ENVIADO_CLIENTE" && paramsOf(est.parameterVersion).approval.fluxoObrigatorio && !est.approvedLevel)
         throw new UserError("Aprovação interna pendente.");
-      if (target === "EM_ELABORACAO") await tx.pricingEstimate.update({ where: { id: estimateId }, data: { approvedLevel: null, approvedAt: null } });
+      if (target === "EM_ELABORACAO") await tx.pricingEstimate.update({ where: { id: estimateId }, data: { approvedLevel: null, approvedAt: null, closeReason: null } });
       const now = new Date();
       await tx.pricingEstimate.update({
         where: { id: estimateId },
@@ -499,7 +559,7 @@ async function copyItems(tx: Tx, fromId: string, toId: string, user: CurrentUser
 
 export async function duplicateEstimate(id: string, mode: "copy" | "revision"): Promise<ActionState> {
   let newId = "";
-  const res = await runAction(async () => {
+  const res = await auditedRun("duplicateEstimate", id, async () => {
     const user = await assertPermission("pricing:write");
     const src = await db.pricingEstimate.findUniqueOrThrow({ where: { id } });
     const version = await getActiveVersion();
@@ -519,6 +579,7 @@ export async function duplicateEstimate(id: string, mode: "copy" | "revision"): 
           commercialOwnerId: src.commercialOwnerId, technicalOwnerId: src.technicalOwnerId, internalNotes: src.internalNotes,
           commercialNotes: src.commercialNotes, parameterVersionId: version.id, createdById: user.id, status: "EM_ELABORACAO",
           marginOverride: src.marginOverride, marginReason: src.marginReason,
+          commissionPercent: src.commissionPercent, commissionBase: src.commissionBase, commissionTo: src.commissionTo, commissionReason: src.commissionReason,
           taxRate: paramsOf(version).general.imposto,
         },
       });
@@ -529,7 +590,7 @@ export async function duplicateEstimate(id: string, mode: "copy" | "revision"): 
         estimateId: e.id, previousValue: src.number, newValue: { number, versaoParametros: version.label },
         justification: `Itens recalculados com os parâmetros vigentes; ajustes de itens e descontos não são copiados${src.marginOverride ? `; margem do orçamento (${fmtPct(src.marginOverride.toString())}) mantida` : ""}.`,
       });
-      if (mode === "revision" && (EDITABLE_STATUSES as readonly string[]).includes(src.status)) {
+      if (mode === "revision" && !FINAL.includes(src.status)) {
         await tx.pricingEstimate.update({ where: { id: src.id }, data: { status: "CANCELADO", closeReason: `Substituído pela revisão ${number}` } });
         await pricingAudit(tx, user.id, "CANCELAMENTO", "PricingEstimate", src.id, { estimateId: src.id, field: "status", previousValue: src.status, newValue: "CANCELADO", justification: `Substituído pela revisão ${number}` });
       }
@@ -540,7 +601,7 @@ export async function duplicateEstimate(id: string, mode: "copy" | "revision"): 
 
 /** Recalcula todos os itens com a versão de parâmetros vigente (ação explícita e auditada). */
 export async function repriceWithActiveParams(id: string, reason: string): Promise<ActionState> {
-  return runAction(async () => {
+  return auditedRun("repriceWithActiveParams", id, async () => {
     const user = await assertPermission("pricing:write");
     if (reason.trim().length < 5) throw new UserError("Informe o motivo.");
     const version = await getActiveVersion();
@@ -575,7 +636,7 @@ export async function repriceWithActiveParams(id: string, reason: string): Promi
 
 export async function createContractFromEstimate(id: string): Promise<ActionState> {
   let contractId = "";
-  const res = await runAction(async () => {
+  const res = await auditedRun("createContractFromEstimate", id, async () => {
     const user = await assertPermission("contracts:write");
     const est = await db.pricingEstimate.findUniqueOrThrow({ where: { id }, include: { items: { orderBy: { order: "asc" } }, contracts: true } });
     if (est.status !== "ACEITO") throw new UserError("Crie o contrato após o aceite do cliente.");
@@ -599,7 +660,7 @@ export async function createContractFromEstimate(id: string): Promise<ActionStat
 }
 
 export async function createWorkOrdersFromEstimate(id: string, _: ActionState, fd: FormData): Promise<ActionState> {
-  return runAction(async () => {
+  return auditedRun("createWorkOrdersFromEstimate", id, async () => {
     const user = await assertPermission("workorders:write");
     const scheduledAt = optDate().parse(fd.get("scheduledAt"));
     const est = await db.pricingEstimate.findUniqueOrThrow({
@@ -635,12 +696,18 @@ export async function createWorkOrdersFromEstimate(id: string, _: ActionState, f
 }
 
 export async function deleteEstimate(id: string): Promise<ActionState> {
-  return runAction(async () => {
+  return auditedRun("deleteEstimate", id, async () => {
     const user = await assertPermission("pricing:write");
-    const est = await db.pricingEstimate.findUniqueOrThrow({ where: { id }, include: { _count: { select: { proposals: true, items: true } } } });
-    if (est.status !== "RASCUNHO" || est._count.proposals) throw new UserError("Somente rascunhos sem proposta podem ser excluídos. Use Cancelar.");
+    const est = await db.pricingEstimate.findUniqueOrThrow({
+      where: { id },
+      include: { _count: { select: { items: true, contracts: true, workOrders: true } }, proposals: { where: { status: { in: ["ENVIADA", "ACEITA"] } }, select: { id: true } } },
+    });
+    if (est.proposals.length || est._count.contracts || est._count.workOrders)
+      throw new UserError("Orçamento com proposta enviada/aceita, contrato ou ordem de serviço não pode ser excluído (histórico comercial). Use Cancelar.");
+    await pricingAudit(db, user.id, "EXCLUSAO", "PricingEstimate", id, {
+      previousValue: { numero: est.number, status: est.status, itens: est._count.items, total: est.negotiatedTotal.toString() },
+    });
     await db.pricingEstimate.delete({ where: { id } });
-    await pricingAudit(db, user.id, "EXCLUSAO", "PricingEstimate", id, { previousValue: est.number });
     await audit(user.id, "DELETE", "PricingEstimate", id, est.number);
   });
 }

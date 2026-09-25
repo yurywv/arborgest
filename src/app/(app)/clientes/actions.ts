@@ -1,5 +1,6 @@
 "use server";
 
+import { splitAddress } from "@/lib/address";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { assertPermission } from "@/lib/auth/session";
@@ -22,6 +23,8 @@ const schema = z.object({
   email: optEmail(),
   website: optUrl(),
   address: optStr(200),
+  addressNumber: optStr(20),
+  addressComplement: optStr(100),
   district: optStr(100),
   city: optStr(100),
   state: optEnum(keysOf(UFS)),
@@ -34,7 +37,7 @@ export async function saveClient(id: string | null, _: ActionState, fd: FormData
   let savedId = id;
   const res = await runAction(async () => {
     const user = await assertPermission("clients:write");
-    const data = schema.parse(formObject(fd));
+    const data = splitAddress(schema.parse(formObject(fd)), "addressNumber");
     if (id) {
       await db.client.update({ where: { id }, data });
       await audit(user.id, "UPDATE", "Client", id, data.legalName);

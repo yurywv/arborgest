@@ -74,7 +74,7 @@ export function TreePicker({ trees, selected, onChange }: { trees: PickerTree[];
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
         <label className="relative sm:col-span-2 lg:col-span-3">
           <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-stone-400" />
-          <input className="input pl-9" placeholder="Código ou espécie" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Buscar árvore" />
+          <input className="input pl-9" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Buscar árvore" />
         </label>
         {sel2("Espécie", species, setSpecies, opts.species.map((s) => [s, s]))}
         {sel2("Risco", risk, setRisk, opts.risks)}

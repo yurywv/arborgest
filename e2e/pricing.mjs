@@ -26,6 +26,18 @@ async function login(email, viewport = { width: 1366, height: 900 }, extra = {})
 const ready = async (p) => { await p.waitForLoadState("networkidle"); await p.waitForTimeout(300); };
 const priceOnScreen = async (p) => brl(await p.getByTestId("preco-final").textContent());
 const totalOnScreen = async (p) => brl(await p.getByTestId("total-proposta").textContent());
+/** Preenche os campos obrigatórios do simulador (nada vem pré-preenchido). */
+async function fillSim(p, o) {
+  if (o.service) await p.locator("#svc").selectOption(o.service);
+  if (o.trees !== undefined) await p.locator("#sim-trees").fill(String(o.trees));
+  await p.locator("#sim-distanceKm").fill(String(o.distance ?? 0));
+  await p.locator("#sim-toll").fill(String(o.toll ?? 0));
+  await p.locator("#sim-auxiliaries").fill(String(o.aux ?? 2));
+  await p.getByRole("radio", { name: new RegExp(`^${o.difficulty ?? "Média"}`) }).click();
+  if (o.serviceType) await p.locator("#sim-serviceType").selectOption(String(o.serviceType));
+  if (o.fuel !== undefined) await p.locator("#sim-fuelLiters").fill(String(o.fuel));
+  if (o.supervision !== undefined) await p.locator(`#sim-supervision-${o.supervision ? "sim" : "nao"}`).check();
+}
 
 try {
   // 0. Administrador cadastra a lei municipal de compensação (com frete da cidade)
@@ -59,9 +71,12 @@ try {
   // 2. Item de inventário: simulação em tempo real = cálculo do servidor
   await com.getByRole("link", { name: "Adicionar serviço" }).first().click();
   await com.waitForURL(/\/item/); await ready(com);
-  await com.locator("#sim-trees").fill("200");
-  await com.locator("#sim-distanceKm").fill("40");
-  await com.locator("#sim-auxiliaries").fill("2");
+  check("simulador começa sem serviço escolhido", (await com.locator("#svc").inputValue()) === "");
+  await com.locator("#svc").selectOption("INVENTARIO");
+  check("campos começam vazios (nenhum conteúdo sugerido)",
+    (await com.locator("#sim-trees").inputValue()) === "" && (await com.locator("#sim-distanceKm").inputValue()) === "" &&
+    (await com.locator("#sim-trees").getAttribute("placeholder")) === null && (await com.getByText(/preencha:/).isVisible()));
+  await fillSim(com, { trees: 200, distance: 40, toll: 0, aux: 2, difficulty: "Média" });
   const clientPrice = await priceOnScreen(com);
   const api = await com.request.post(`${base}/api/precificacao/calcular`, { data: { service: "INVENTARIO", inputs: { trees: 200, distanceKm: 40, difficulty: 2, auxiliaries: 2, lodging: false, toll: 0 } } });
   const serverPrice = Number((await api.json()).result.finalPriceRounded);
@@ -75,7 +90,7 @@ try {
   // 3. Poda com seleção direta de árvores da propriedade
   await com.getByRole("link", { name: "Adicionar serviço" }).first().click();
   await com.waitForURL(/\/item/); await ready(com);
-  await com.locator("#svc").selectOption("PODA");
+  await fillSim(com, { service: "PODA", distance: 40, toll: 0, aux: 2, difficulty: "Média", serviceType: 1, fuel: 0, supervision: true });
   await com.getByRole("button", { name: /Selecionar árvores cadastradas/ }).click();
   await com.getByRole("button", { name: "Selecionar exibidas" }).click();
   const selected = Number(await com.getByTestId("arvores-selecionadas").textContent());
@@ -88,9 +103,8 @@ try {
   await com.getByRole("link", { name: "Adicionar serviço" }).first().click();
   await com.waitForURL(/\/item/); await ready(com);
   await com.locator("#svc").selectOption("SUPRESSAO");
-  await com.locator("#sim-trees").fill("3");
-  check("valores regionais reaproveitados do item anterior (distância)", (await com.locator("#sim-distanceKm").inputValue()) === "40");
-  await com.getByRole("radio", { name: /Muito difícil/ }).click();
+  check("novo item não copia valores do item anterior", (await com.locator("#sim-distanceKm").inputValue()) === "");
+  await fillSim(com, { trees: 3, distance: 40, toll: 0, aux: 2, difficulty: "Muito difícil", serviceType: 1, fuel: 0, supervision: true });
   await com.locator("#sim-mealCost").fill("70");
   await com.locator("#sim-cacamba").check();
   await com.locator("#sim-cacambaQty").fill("2");
@@ -99,16 +113,14 @@ try {
   const ruleValue = await com.locator("#sim-compensationRule option", { hasText: "Hortolândia/SP" }).first().getAttribute("value");
   await com.locator("#sim-compensationRule").selectOption(ruleValue);
   check("lei municipal preenche mudas e frete", (await com.locator("#sim-seedlings").inputValue()) === "30" && (await com.locator("#sim-freightValue").inputValue()) === "350");
-  check("acompanhamento técnico marcado por padrão", await com.locator("#sim-supervision").isChecked());
+  check("acompanhamento técnico exige escolha (Sim) e não vem marcado", await com.locator("#sim-supervision-sim").isChecked());
   const supPrice = await priceOnScreen(com);
   await com.getByRole("button", { name: "Ver memória de cálculo" }).click();
   const memory = (await com.locator("section[aria-label='Memória de cálculo']").textContent()).replace(/\u00a0/g, " ");
   check("memória mostra acompanhamento técnico, caçambas informadas, valor regional e lei",
     ["Acompanhamento técnico — diária", "2 caçamba(s) informada(s) × R$ 900,00 (preço regional)", "R$ 70,00 (valor regional)", "Lei Municipal nº 9.999/2021", "Muito difícil"].every((t) => memory.includes(t)));
   const totalBeforeSup = await (async () => { await com.goto(estUrl); await ready(com); const t = await totalOnScreen(com); await com.goBack(); await ready(com); return t; })();
-  await com.locator("#svc").selectOption("SUPRESSAO");
-  await com.locator("#sim-trees").fill("3");
-  await com.getByRole("radio", { name: /Muito difícil/ }).click();
+  await fillSim(com, { service: "SUPRESSAO", trees: 3, distance: 40, toll: 0, aux: 2, difficulty: "Muito difícil", serviceType: 1, fuel: 0, supervision: true });
   await com.locator("#sim-mealCost").fill("70");
   await com.locator("#sim-cacamba").check();
   await com.locator("#sim-cacambaQty").fill("2");
@@ -161,6 +173,25 @@ try {
   await com.reload(); await ready(com);
   check("desconto que geraria margem negativa é bloqueado", (await totalOnScreen(com)) === afterMargin);
 
+  // 4c. Comissão: não altera o preço; negativa é rejeitada; entra na análise interna
+  const totalBeforeCommission = await totalOnScreen(com);
+  const commissionForm = com.locator("form", { hasText: "Aplicar comissão" });
+  await commissionForm.getByLabel(/^Comissão/).fill("-3");
+  await commissionForm.getByLabel(/^Motivo/).fill("Teste de comissão negativa.");
+  await com.getByRole("button", { name: "Aplicar comissão" }).click();
+  await com.getByText("Comissão não pode ser negativa.").first().waitFor();
+  check("comissão negativa é rejeitada", true);
+  await commissionForm.getByLabel(/^Comissão/).fill("10");
+  await commissionForm.getByText("Margem de lucro (excluídos os impostos)").click();
+  await commissionForm.getByLabel(/^Comissionado/).fill("Representante Sul");
+  await commissionForm.getByLabel(/^Motivo/).fill("Indicação do representante regional.");
+  await com.getByRole("button", { name: "Aplicar comissão" }).click();
+  await com.getByText(/Comissão de 10% sobre margem de lucro/).waitFor();
+  await com.reload(); await ready(com);
+  const analysis = (await com.locator("section", { hasText: "Análise interna" }).textContent()).replace(/\u00a0/g, " ");
+  check("comissão sobre o lucro aparece na análise e não muda o preço",
+    (await totalOnScreen(com)) === totalBeforeCommission && analysis.includes("Resultado após comissão") && analysis.includes("Representante Sul"));
+
   // 5. Aprovação por alçada (poda legada ⇒ margem baixa ⇒ diretoria)
   await com.getByRole("button", { name: "Solicitar aprovação" }).click();
   await com.waitForTimeout(1500); await com.reload(); await ready(com);
@@ -178,13 +209,16 @@ try {
 
   // 6. Proposta, PDF (sem dados internos) e envio
   await com.goto(`${estUrl}?aba=proposta`); await ready(com);
+  check("proposta começa em branco", (await com.getByLabel(/^Título/).inputValue()) === "" && (await com.getByLabel(/^Objeto/).inputValue()) === "");
+  await com.getByLabel(/^Título/).fill("Proposta E2E — manejo da área verde");
+  await com.getByLabel(/^Objeto/).fill("Inventário, poda e supressão conforme levantamento.");
   await com.getByRole("button", { name: "Gerar proposta" }).click();
   await com.waitForURL(/aba=proposta/); await ready(com);
   const pdfHref = await com.getByRole("link", { name: "PDF da proposta" }).first().getAttribute("href");
   const pdf = await com.request.get(`${base}${pdfHref}`);
   const body = (await pdf.body()).toString("latin1");
   check("PDF da proposta gerado", pdf.headers()["content-type"] === "application/pdf" && body.startsWith("%PDF") && body.includes("TOTAL DA PROPOSTA"));
-  check("PDF não expõe custos/margem", !/custo operacional|margem|rateio|sal[aá]rio/i.test(body));
+  check("PDF não expõe custos/margem/comissão", !/custo operacional|margem|rateio|sal[aá]rio|comiss|Representante Sul/i.test(body));
   check("PDF cita a lei municipal da compensação", body.includes("9.999/2021"));
   await com.getByRole("button", { name: "Registrar envio" }).click();
   await com.waitForTimeout(1500); await com.goto(estUrl); await ready(com);
@@ -206,6 +240,24 @@ try {
   await adm.waitForTimeout(2000); await adm.reload(); await ready(adm);
   check("OS criadas para os itens", (await adm.locator("a[href^='/ordens-servico/']").count()) >= 2);
 
+  // 7b. Orçamento aceito continua editável: incluir serviço reabre para "Em elaboração" (registrado)
+  await com.goto(estUrl); await ready(com);
+  check("orçamento aceito oferece edição", await com.getByRole("link", { name: "Adicionar serviço" }).first().isVisible());
+  await com.getByRole("link", { name: "Adicionar serviço" }).first().click();
+  await com.waitForURL(/\/item/); await ready(com);
+  await fillSim(com, { service: "INVENTARIO", trees: 10, distance: 5, toll: 0, aux: 1, difficulty: "Fácil" });
+  await com.getByRole("button", { name: "Adicionar à proposta" }).click();
+  await com.waitForURL(estUrl); await ready(com);
+  check("edição de orçamento aceito reabre para Em elaboração", await com.getByText("Em elaboração").first().isVisible());
+  const itemsBefore = await com.getByRole("button", { name: "Remover" }).count();
+  await com.getByRole("button", { name: "Remover" }).last().click();
+  await com.waitForTimeout(1500); await com.reload(); await ready(com);
+  check("item excluído do orçamento", (await com.getByRole("button", { name: "Remover" }).count()) === itemsBefore - 1);
+  await adm.goto(`${base}/admin/precificacao?aba=auditoria&acao=TENTATIVA_RECUSADA`); await ready(adm);
+  check("tentativas recusadas ficam registradas na auditoria", (await adm.locator("li", { hasText: /Comissão não pode ser negativa|Margem de lucro não pode ser negativa/ }).count()) > 0);
+  await adm.goto(`${base}/admin/precificacao?aba=auditoria&acao=REABERTURA`); await ready(adm);
+  check("reabertura registrada na auditoria geral", (await adm.locator("li", { hasText: "Reabertura para edição" }).count()) > 0);
+
   // 8. Histórico / auditoria
   await adm.goto(`${estUrl}?aba=historico`); await ready(adm);
   const audit = await adm.locator("main").textContent();
@@ -218,7 +270,7 @@ try {
   const oldTotal = brl(await oldRow.locator("td").nth(5).textContent());
   await adm.goto(`${base}/admin/precificacao`); await ready(adm);
   await adm.getByLabel("Custo técnico/dia").fill("450");
-  await adm.getByPlaceholder(/Descrição\/motivo/).fill("Reajuste do custo técnico (teste E2E)");
+  await adm.getByLabel(/^Descrição\/motivo da nova versão/).fill("Reajuste do custo técnico (teste E2E)");
   await adm.getByRole("button", { name: "Publicar nova versão" }).click();
   await adm.getByText(/Versão 1\.\d+ publicada/).waitFor();
   await adm.goto(`${base}/precificacao`); await ready(adm);
@@ -235,6 +287,7 @@ try {
   check("consulta não vê custos internos nem ações", !(await con.getByText("Análise interna").isVisible()) && !(await con.getByRole("link", { name: "Adicionar serviço" }).count()));
   const tec = await login("tecnico@arborgest.demo");
   await tec.goto(`${base}/precificacao/simulador`); await ready(tec);
+  await fillSim(tec, { service: "INVENTARIO", trees: 100, distance: 10, toll: 0, aux: 2, difficulty: "Média" });
   check("técnico simula sem ver custos/margem", (await tec.getByTestId("preco-final").isVisible()) && !(await tec.getByText("Custo operacional").count()));
   const op = await login("operacional@arborgest.demo");
   await op.goto(`${base}/precificacao`); await ready(op);
@@ -247,7 +300,7 @@ try {
   // 11. Celular
   const mob = await login("comercial@arborgest.demo", undefined, { ...devices["iPhone 13"] });
   await mob.goto(`${base}/precificacao/simulador`); await ready(mob);
-  await mob.locator("#sim-trees").fill("350");
+  await fillSim(mob, { service: "INVENTARIO", trees: 350, distance: 10, toll: 0, aux: 2, difficulty: "Média" });
   const noScroll = await mob.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1);
   check("simulador no celular sem rolagem horizontal e recalculando", noScroll && (await priceOnScreen(mob)) > 0);
   await mob.screenshot({ path: "e2e/screenshots/pricing-mobile.png", fullPage: true });

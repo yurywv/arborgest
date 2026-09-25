@@ -78,7 +78,7 @@ export async function deleteTeam(id: string): Promise<ActionState> {
 // ── Perfis ──
 const roleSchema = z.object({
   name: reqStr("Nome", 60),
-  key: z.preprocess((v) => String(v ?? "").trim().toUpperCase(), z.string().regex(/^[A-Z][A-Z0-9_]{1,29}$/, "Use letras maiúsculas, números e _ (ex.: SUPERVISOR).")),
+  key: z.preprocess((v) => String(v ?? "").trim().toUpperCase(), z.string().regex(/^[A-Z][A-Z0-9_]{1,29}$/, "Use letras maiúsculas, números e _ (sem espaços).")),
   description: optStr(300),
   permissions: z.array(z.enum(ALL_PERMISSIONS as [string, ...string[]])),
 });

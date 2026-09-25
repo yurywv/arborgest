@@ -4,7 +4,7 @@ import { requestPasswordReset } from "../actions";
 
 export function ForgotForm() {
   return (
-    <ActionForm action={requestPasswordReset} className="space-y-4" resetOnSuccess>
+    <ActionForm autoComplete="on" action={requestPasswordReset} className="space-y-4" resetOnSuccess>
       <Field name="email" label="E-mail" type="email" inputMode="email" autoComplete="email" required />
       <SubmitButton className="w-full">Enviar link</SubmitButton>
     </ActionForm>

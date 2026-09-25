@@ -20,25 +20,46 @@ type Values = Record<string, string | boolean | string[]>;
 function toValues(inputs: Record<string, unknown>): Values {
   return Object.fromEntries(Object.entries(inputs).map(([k, v]) => [k, v === null || v === undefined ? "" : typeof v === "number" ? String(v) : (v as string | boolean | string[])]));
 }
+/** Formulário vazio: nenhum conteúdo sugerido (caixas desmarcadas, demais campos em branco). */
+function emptyValues(service: ServiceCode): Values {
+  return Object.fromEntries(SERVICES[service].fields
+    .filter((f) => f.kind !== "compensationRule")
+    .map((f) => [f.key, f.kind === "bool" ? false : f.kind === "modifiers" ? [] : ""]));
+}
+
+const isVisible = (f: FieldDef, v: Values) => !f.showIf || v[f.showIf.key] === f.showIf.equals || String(v[f.showIf.key]) === String(f.showIf.equals);
+
+/** Campos obrigatórios ainda não preenchidos (o preço só é calculado quando todos estiverem informados). */
+function missingFields(service: ServiceCode, v: Values) {
+  return SERVICES[service].fields
+    .filter((f) => !f.optional && isVisible(f, v) && ["int", "decimal", "money", "difficulty", "serviceType", "yesno"].includes(f.kind))
+    .filter((f) => v[f.key] === "" || v[f.key] === undefined || v[f.key] === null)
+    .map((f) => f.label.replace(/\?$/, ""));
+}
+
 /** Converte o formulário em entradas do motor. Campos numéricos opcionais vazios viram null (= padrão dos parâmetros). */
 function toInputs(v: Values, service: ServiceCode): Record<string, unknown> {
   const fields = new Map(SERVICES[service].fields.map((f) => [f.key, f]));
   // Aceita "12,5", "1.234,50" e "12.5".
   const num = (x: string, optional: boolean) => {
     const t = x.trim();
-    if (t === "") return optional ? null : 0;
+    if (t === "") return optional ? null : undefined;
     return Number(t.includes(",") ? t.replace(/\./g, "").replace(",", ".") : t);
   };
   return Object.fromEntries(Object.entries(v).map(([k, x]) => {
     const f = fields.get(k);
     if (typeof x !== "string" || !f) return [k, x];
     if (f.kind === "text") return [k, x.trim() === "" ? null : x];
-    if (f.kind === "select") return [k, x];
+    if (f.kind === "select") return [k, x === "" ? "NONE" : x];
+    if (f.kind === "yesno") return [k, undefined];
     return [k, num(x, !!f.optional)];
   }));
 }
 
-function tryCalc(service: ServiceCode, values: Values, params: PricingParams): { result?: CalcResult; error?: string } {
+function tryCalc(service: ServiceCode | "", values: Values, params: PricingParams): { result?: CalcResult; error?: string } {
+  if (!service) return { error: "Selecione o serviço." };
+  const missing = missingFields(service, values);
+  if (missing.length) return { error: `Preencha: ${missing.join(", ")}.` };
   try {
     return { result: calculate(service, toInputs(values, service), params).result };
   } catch (e) {
@@ -71,8 +92,8 @@ export type CompensationRuleOption = { id: string; city: string; state: string; 
 
 export function PricingSimulator(props: SimulatorProps) {
   const { params, canSeeCosts } = props;
-  const [service, setService] = useState<ServiceCode>(props.service ?? props.services[0]);
-  const [values, setValues] = useState<Values>(() => toValues({ ...SERVICES[props.service ?? props.services[0]].defaults, ...(props.initialInputs ?? {}) }));
+  const [service, setService] = useState<ServiceCode | "">(props.service ?? "");
+  const [values, setValues] = useState<Values>(() => (props.service ? { ...emptyValues(props.service), ...toValues(props.initialInputs ?? {}) } : {}));
   const [description, setDescription] = useState(props.description ?? "");
   const [treeIds, setTreeIds] = useState<string[]>(props.initialTreeIds ?? []);
   const [useTrees, setUseTrees] = useState((props.initialTreeIds?.length ?? 0) > 0);
@@ -81,7 +102,7 @@ export function PricingSimulator(props: SimulatorProps) {
   const [pending, start] = useTransition();
   const [serverMsg, setServerMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
-  const def = SERVICES[service];
+  const def = service ? SERVICES[service] : null;
   const effective: Values = useMemo(() => (useTrees ? { ...values, trees: String(treeIds.length) } : values), [useTrees, values, treeIds]);
   const { result, error } = useMemo(() => tryCalc(service, effective, params), [service, effective, params]);
   const comparison = useMemo(() => {
@@ -95,9 +116,15 @@ export function PricingSimulator(props: SimulatorProps) {
     setValues((s) => ({ ...s, [k]: v }));
     setServerMsg(null);
   };
-  const changeService = (s: ServiceCode) => {
+  const changeService = (s: ServiceCode | "") => {
     setService(s);
-    setValues((cur) => toValues({ ...SERVICES[s].defaults, ...Object.fromEntries(Object.entries(toInputs(cur, service)).filter(([k]) => k in SERVICES[s].defaults && k !== "difficulty")) }));
+    if (!s) return;
+    // Mantém apenas o que o usuário já digitou e existe no novo serviço (dificuldade e tipo têm outro significado).
+    setValues((cur) => {
+      const empty = emptyValues(s);
+      const keep = Object.fromEntries(Object.entries(cur).filter(([k]) => k in empty && !["difficulty", "serviceType"].includes(k)));
+      return { ...empty, ...keep };
+    });
   };
 
   const confirmWarnings = result?.warnings.filter((w) => w.level === "confirm") ?? [];
@@ -106,13 +133,13 @@ export function PricingSimulator(props: SimulatorProps) {
     { key: "LOGISTICA", title: "Logística" },
     { key: "REGIONAL", title: "Valores regionais" },
     { key: "OPERACAO", title: "Operação" },
-    { key: "SERVICO", title: def.name },
+    { key: "SERVICO", title: def?.name ?? "" },
     { key: "COMPENSACAO", title: "Compensação ambiental" },
     { key: "FRETE", title: "Frete (mudas e materiais)" },
     { key: "ACOMPANHAMENTO", title: "Acompanhamento técnico" },
     { key: "MODIFICADORES", title: "Modificadores" },
   ];
-  const visible = (f: FieldDef) => !f.showIf || values[f.showIf.key] === f.showIf.equals || String(values[f.showIf.key]) === String(f.showIf.equals);
+  const visible = (f: FieldDef) => isVisible(f, values);
   /** Lei municipal escolhida: preenche município, citação, mudas (árvores × mudas/árvore) e frete da cidade. */
   const applyRule = (id: string) => {
     const r = props.compensationRules?.find((x) => x.id === id);
@@ -128,10 +155,11 @@ export function PricingSimulator(props: SimulatorProps) {
   };
 
   async function save() {
-    if (!props.onSave || !result) return;
+    if (!props.onSave || !result || !service) return;
+    const svc = service;
     start(async () => {
       const r = await props.onSave!({
-        service, inputs: toInputs(effective, service), description, treeIds: useTrees ? treeIds : [], confirmWarnings: confirm, clientPrice: result.finalPriceRounded,
+        service: svc, inputs: toInputs(effective, svc), description, treeIds: useTrees ? treeIds : [], confirmWarnings: confirm, clientPrice: result.finalPriceRounded,
       });
       if (r && !r.ok) setServerMsg({ ok: false, text: r.message ?? "Falha ao salvar." });
     });
@@ -144,21 +172,22 @@ export function PricingSimulator(props: SimulatorProps) {
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <label className="label" htmlFor="svc">Serviço</label>
-              <select id="svc" className="input" value={service} disabled={props.lockService} onChange={(e) => changeService(e.target.value as ServiceCode)}>
+              <select id="svc" className="input" value={service} disabled={props.lockService} onChange={(e) => changeService(e.target.value as ServiceCode | "")}>
+                {!service && <option value="">Selecione…</option>}
                 {props.services.map((s) => <option key={s} value={s}>{SERVICES[s].name}</option>)}
               </select>
-              <p className="mt-1 text-xs text-stone-500">{def.description}</p>
+              {def && <p className="mt-1 text-xs text-stone-500">{def.description}</p>}
             </div>
             {props.onSave && (
               <div>
                 <label className="label" htmlFor="desc">Descrição do item na proposta</label>
-                <input id="desc" className="input" value={description} maxLength={500} placeholder="Ex.: Poda de limpeza nas áreas comuns" onChange={(e) => setDescription(e.target.value)} />
+                <input id="desc" className="input" value={description} maxLength={500} onChange={(e) => setDescription(e.target.value)} />
               </div>
             )}
           </div>
         </section>
 
-        {sections.map((sec) => {
+        {def && service && sections.map((sec) => {
           const fields = def.fields.filter((f) => f.section === sec.key && visible(f));
           if (!fields.length) return null;
           return (
@@ -198,7 +227,9 @@ export function PricingSimulator(props: SimulatorProps) {
           </div>
           <div className="card-body space-y-3">
             {error ? (
-              <p role="alert" className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>
+              error.startsWith("Preencha") || error.startsWith("Selecione")
+                ? <p role="status" className="rounded-xl bg-stone-100 px-3 py-2 text-sm text-stone-700">{error.replace(/^Preencha:/, "Para calcular, preencha:")}</p>
+                : <p role="alert" className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>
             ) : result ? (
               <>
                 <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
@@ -320,6 +351,21 @@ function FieldInput({ f, values, set, params, service, rules, applyRule }: {
       </div>
     );
   }
+  if (f.kind === "yesno")
+    return (
+      <fieldset className="sm:col-span-2">
+        <legend className="label">{f.label}</legend>
+        <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label={f.label}>
+          {([[true, "Sim"], [false, "Não"]] as const).map(([val, lbl]) => (
+            <label key={lbl} className="flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border border-stone-200 bg-white px-3 has-checked:border-brand-400 has-checked:bg-brand-50">
+              <input type="radio" id={`${id}-${val ? "sim" : "nao"}`} name={id} className="size-4 accent-brand-600" checked={v === val} onChange={() => set(f.key, val)} />
+              <span className="text-sm font-medium">{lbl}</span>
+            </label>
+          ))}
+        </div>
+        {f.hint && <p className="mt-1 text-xs text-stone-500">{f.hint}</p>}
+      </fieldset>
+    );
   if (f.kind === "select")
     return (
       <div>
@@ -352,7 +398,8 @@ function FieldInput({ f, values, set, params, service, rules, applyRule }: {
     return (
       <div>
         <label className="label" htmlFor={id}>{f.label}</label>
-        <select id={id} className="input" value={String(v)} onChange={(e) => set(f.key, e.target.value)}>
+        <select id={id} className="input" value={String(v ?? "")} onChange={(e) => set(f.key, e.target.value)}>
+          <option value="">Selecione…</option>
           {(params.services[service].serviceTypes ?? []).map((t) => (
             <option key={t.code} value={t.code}>{t.label}{Number(t.factor) !== 1 ? ` (× ${fmtN(t.factor)})` : ""}</option>
           ))}
@@ -381,8 +428,7 @@ function FieldInput({ f, values, set, params, service, rules, applyRule }: {
     <div>
       <label className="label" htmlFor={id}>{f.label}</label>
       <div className="relative">
-        <input id={id} className={clsx("input", f.suffix && "pr-12")} inputMode={f.kind === "int" ? "numeric" : "decimal"} autoComplete="off"
-          placeholder={f.placeholder?.(params)} value={String(v ?? "")} onChange={(e) => set(f.key, e.target.value)} />
+        <input id={id} className={clsx("input", f.suffix && "pr-12")} inputMode={f.kind === "int" ? "numeric" : "decimal"} autoComplete="off" value={String(v ?? "")} onChange={(e) => set(f.key, e.target.value)} />
         {f.suffix && <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-stone-400">{f.suffix}</span>}
       </div>
       {f.hint && <p className="mt-1 text-xs text-stone-500">{f.hint}</p>}

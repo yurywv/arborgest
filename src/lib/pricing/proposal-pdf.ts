@@ -1,14 +1,15 @@
 import "server-only";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
+import { formatAddress } from "@/lib/address";
 import type { CommercialProposal, CommercialProposalItem } from "@prisma/client";
 
 type Proposal = CommercialProposal & {
   items: CommercialProposalItem[];
-  client: { legalName: string; tradeName: string | null; document: string | null; address: string | null; city: string | null; state: string | null };
+  client: { legalName: string; tradeName: string | null; document: string | null; address: string | null; addressNumber: string | null; city: string | null; state: string | null };
   contact: { name: string; email: string | null; phone: string | null; mobile: string | null } | null;
-  property: { name: string; address: string | null; city: string | null; state: string | null } | null;
-  estimate: { number: string };
+  property: { name: string; address: string | null; number: string | null; complement: string | null; district: string | null; city: string | null; state: string | null } | null;
+  estimate?: { number: string } | null;
 };
 
 type Company = { name: string; phone?: string; email?: string; document?: string; address?: string };
@@ -72,7 +73,7 @@ export function proposalPdf(p: Proposal, company: Company) {
     ["Cliente", `${cli.tradeName ?? cli.legalName}${cli.tradeName ? ` — ${cli.legalName}` : ""}`],
     ...(cli.document ? [["CPF/CNPJ", fmtDoc(cli.document)] as [string, string]] : []),
     ...(p.contact ? [["A/C", [p.contact.name, p.contact.email, p.contact.mobile ?? p.contact.phone].filter(Boolean).join(" · ")] as [string, string]] : []),
-    ...(p.property ? [["Local", [p.property.name, p.property.address, [p.property.city, p.property.state].filter(Boolean).join("/")].filter(Boolean).join(" — ")] as [string, string]] : []),
+    ...(p.property ? [["Local", [p.property.name, formatAddress(p.property).replace(/ · /g, ", ")].filter(Boolean).join(" — ")] as [string, string]] : []),
   ];
   autoTable(doc, {
     startY: y, theme: "plain", margin: { left: M, right: M },

@@ -1,10 +1,10 @@
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/auth/session";
 import { hasPermission } from "@/lib/auth/permissions";
 import { spGet, type SP } from "@/lib/query";
-import { EDITABLE_STATUSES, paramsOf } from "@/lib/pricing/server";
-import { activeServices, compensationRuleOptions, pickerTrees, regionalDefaults } from "@/lib/pricing/picker-data";
+import { paramsOf } from "@/lib/pricing/server";
+import { activeServices, compensationRuleOptions, pickerTrees } from "@/lib/pricing/picker-data";
 import { SERVICES, isServiceCode } from "@/lib/pricing/registry";
 import { PageHeader } from "@/components/ui";
 import { ItemSimulator } from "../controls";
@@ -21,19 +21,18 @@ export default async function ItemPage({ params, searchParams }: { params: Promi
     include: { parameterVersion: true, client: { select: { legalName: true, tradeName: true } }, property: { select: { name: true } } },
   });
   if (!est) notFound();
-  if (!(EDITABLE_STATUSES as readonly string[]).includes(est.status)) redirect(`/precificacao/${id}`);
   const item = itemId ? await db.pricingEstimateItem.findFirst({ where: { id: itemId, estimateId: id }, include: { trees: { select: { id: true } } } }) : null;
   if (itemId && !item) notFound();
-  const [services, trees, rules, regional] = await Promise.all([
-    activeServices(), pickerTrees({ propertyId: est.propertyId, clientId: est.clientId }), compensationRuleOptions(), item ? Promise.resolve({}) : regionalDefaults(id),
+  const [services, trees, rules] = await Promise.all([
+    activeServices(), pickerTrees({ propertyId: est.propertyId, clientId: est.clientId }), compensationRuleOptions(),
   ]);
   const requested = spGet(sp, "servico");
-  const service = item && isServiceCode(item.serviceCode) ? item.serviceCode : requested && isServiceCode(requested) ? requested : services[0];
+  const service = item && isServiceCode(item.serviceCode) ? item.serviceCode : requested && isServiceCode(requested) ? requested : undefined;
   return (
     <>
       <PageHeader
         back={{ href: `/precificacao/${id}`, label: `Orçamento ${est.number}` }}
-        title={item ? `Editar ${SERVICES[service].name.toLowerCase()}` : "Adicionar serviço"}
+        title={item && service ? `Editar ${SERVICES[service].name.toLowerCase()}` : "Adicionar serviço"}
         subtitle={`${est.client.tradeName ?? est.client.legalName}${est.property ? ` · ${est.property.name}` : ""} · parâmetros v${est.parameterVersion.label}`}
       />
       <ItemSimulator
@@ -41,10 +40,10 @@ export default async function ItemPage({ params, searchParams }: { params: Promi
         itemId={item?.id ?? null}
         params={paramsOf(est.parameterVersion)}
         versionLabel={est.parameterVersion.label}
-        services={item ? [service] : services}
+        services={item && service ? [service] : services}
         service={service}
         lockService={!!item}
-        initialInputs={(item?.inputs as Record<string, unknown>) ?? regional}
+        initialInputs={(item?.inputs as Record<string, unknown>) ?? undefined}
         description={item?.description}
         canSeeCosts={hasPermission(user.permissions, "pricing:costs")}
         showComparison={hasPermission(user.permissions, "pricing:approve") || hasPermission(user.permissions, "pricing:params")}

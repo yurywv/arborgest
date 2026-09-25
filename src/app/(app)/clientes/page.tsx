@@ -42,7 +42,7 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
         actions={hasPermission(user.permissions, "clients:write") && <LinkButton href="/clientes/novo" variant="primary" icon={Plus}>Novo cliente</LinkButton>}
       />
       <FilterForm>
-        <SearchBox defaultValue={q} placeholder="Nome, CNPJ ou cidade" />
+        <SearchBox defaultValue={q} />
         <FilterSelect name="status" label="Status" options={enumOptions(CLIENT_STATUS)} value={status} />
         <FilterSelect name="tipo" label="Tipo" options={CLIENT_TYPES} value={type} />
       </FilterForm>

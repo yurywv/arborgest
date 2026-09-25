@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { formatAddress } from "@/lib/address";
 import { notFound } from "next/navigation";
 import {
   ClipboardCheck, Wrench, ClipboardList, Crosshair, Camera, Map as MapIcon, QrCode, Pencil, ShieldAlert, Ruler, Trash2, Navigation, ImageOff,
@@ -225,7 +226,7 @@ export default async function TreePage({ params, searchParams }: { params: Promi
               ["Data/hora da captura", fmtDateTime(t.gpsCapturedAt)],
               ["Origem da coordenada", labelOf(COORD_SOURCES, t.coordSource)],
               ["Sistema geodésico", t.geodeticDatum],
-              ["Endereço", t.address],
+              ["Endereço", formatAddress({ address: t.address, number: t.addressNumber }, { withCity: false })],
               ["Referência física", t.physicalRef],
             ]} />
             {links && (

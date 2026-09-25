@@ -15,9 +15,9 @@ export function Topbar({ user, unread }: { user: { name: string; roleName: strin
           <input
             name="q"
             type="search"
-            placeholder="Buscar árvore, espécie, cliente, endereço…"
             className="input min-h-10 rounded-full bg-stone-100 pl-9 shadow-none focus:bg-white"
             aria-label="Busca global"
+            autoComplete="off"
           />
         </form>
         <Link href="/notificacoes" className="relative grid size-10 shrink-0 place-items-center rounded-full hover:bg-stone-100" aria-label="Notificações">

@@ -35,7 +35,7 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
     <>
       <PageHeader title="Contatos" actions={hasPermission(user.permissions, "clients:write") && <LinkButton href="/contatos/novo" variant="primary" icon={Plus}>Novo contato</LinkButton>} />
       <FilterForm>
-        <SearchBox defaultValue={q} placeholder="Nome, e-mail, cargo, celular" />
+        <SearchBox defaultValue={q} />
         <FilterSelect name="cliente" label="Cliente" options={clients} value={clientId} />
         <FilterSelect name="tipo" label="Classificação" options={Object.entries(CONTACT_TYPE).map(([value, label]) => ({ value, label }))} value={type} />
       </FilterForm>

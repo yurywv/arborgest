@@ -40,12 +40,3 @@ export async function compensationRuleOptions() {
     seedlingsPerTree: r.seedlingsPerTree.toString(), freightValue: r.freightValue?.toString() ?? null,
   }));
 }
-
-/** Valores regionais do projeto: reaproveita os informados no último item do orçamento. */
-export async function regionalDefaults(estimateId: string) {
-  const last = await db.pricingEstimateItem.findFirst({ where: { estimateId }, orderBy: { createdAt: "desc" }, select: { inputs: true } });
-  if (!last) return {};
-  const i = last.inputs as Record<string, unknown>;
-  const keys = ["distanceKm", "toll", "lodging", "mealCost", "lodgingCost", "cacambaUnitPrice"];
-  return Object.fromEntries(keys.filter((k) => i[k] !== undefined && i[k] !== null).map((k) => [k, i[k]]));
-}

@@ -17,7 +17,7 @@ export function TreeFilters({ sp, options, action, hideSearch, hidden }: {
   return (
     <FilterForm action={action}>
       {Object.entries(hidden ?? {}).map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
-      {!hideSearch && <SearchBox defaultValue={spGet(sp, "q")} placeholder="Código, espécie, endereço, cliente…" />}
+      {!hideSearch && <SearchBox defaultValue={spGet(sp, "q")} />}
       <FilterSelect name="cliente" label="Cliente" options={options.clients} value={clientId} />
       <FilterSelect name="propriedade" label="Propriedade" options={properties} value={propertyId} />
       <FilterSelect name="setor" label="Setor" options={sectors} value={spGet(sp, "setor")} />

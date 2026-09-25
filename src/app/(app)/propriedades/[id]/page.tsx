@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { formatAddress } from "@/lib/address";
 import { notFound } from "next/navigation";
 import { Pencil, Plus, Trash2, Navigation, Calculator } from "lucide-react";
 import { db } from "@/lib/db";
@@ -73,7 +74,7 @@ export default async function PropertyDetail({ params, searchParams }: { params:
         <div className="grid gap-4 lg:grid-cols-5">
           <Card title="Dados" className="lg:col-span-2">
             <DataList cols={1} items={[
-              ["Endereço", [p.address, p.number, p.complement].filter(Boolean).join(", ")],
+              ["Endereço", formatAddress({ address: p.address, number: p.number, complement: p.complement }, { withCity: false })],
               ["Bairro / cidade", [p.district, p.city && `${p.city}/${p.state ?? ""}`].filter(Boolean).join(" · ")],
               ["CEP", p.zipCode],
               ["Área total", fmtNum(p.totalArea, "m²")],

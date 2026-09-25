@@ -1,18 +1,16 @@
 "use server";
 
+import { auditedRun } from "@/lib/pricing/audited-action";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { assertPermission } from "@/lib/auth/session";
-import { finish, formObject, optDate, optId, optStr, reqStr, runAction, UserError } from "@/lib/actions";
+import { finish, formObject, optDate, optId, optStr, reqStr, UserError } from "@/lib/actions";
 import type { ActionState } from "@/lib/action-state";
 import { dec, money } from "@/lib/pricing/decimal";
 import { SERVICES } from "@/lib/pricing/registry";
 import { calcResultOf, nextProposalNumber, paramsOf, pricingAudit } from "@/lib/pricing/server";
 import { proposalExtras } from "@/lib/pricing/proposal-extras";
-import { renderProposalPdf } from "@/lib/pricing/proposal-data";
-import { mailConfigured, mailLayout, sendMail } from "@/lib/mail";
-import { getSettings } from "@/lib/settings";
-import { fmtBRL } from "@/lib/pricing/decimal";
+import { emailProposal } from "@/lib/pricing/proposal-data";
 
 const schema = z.object({
   title: reqStr("Título", 200),
@@ -32,7 +30,7 @@ const schema = z.object({
 /** Gera uma nova versão da proposta a partir do orçamento (versões anteriores ficam como "substituídas"). */
 export async function createProposal(estimateId: string, _: ActionState, fd: FormData): Promise<ActionState> {
   let proposalId = "";
-  const res = await runAction(async () => {
+  const res = await auditedRun("createProposal", estimateId, async () => {
     const user = await assertPermission("pricing:write");
     const d = schema.parse(formObject(fd));
     const est = await db.pricingEstimate.findUniqueOrThrow({
@@ -79,7 +77,7 @@ export async function createProposal(estimateId: string, _: ActionState, fd: For
 
 /** Registra o envio ao cliente. Com SMTP configurado e "enviar por e-mail" marcado, envia o PDF anexo. */
 export async function sendProposal(proposalId: string, _: ActionState, fd: FormData): Promise<ActionState> {
-  return runAction(async () => {
+  return auditedRun("sendProposal", null, async () => {
     const user = await assertPermission("pricing:write");
     const f = formObject(fd);
     const byEmail = f.byEmail === "on";
@@ -88,26 +86,13 @@ export async function sendProposal(proposalId: string, _: ActionState, fd: FormD
     const p = await db.commercialProposal.findUniqueOrThrow({ where: { id: proposalId }, include: { estimate: { include: { parameterVersion: true } } } });
     if (!["EMITIDA", "ENVIADA"].includes(p.status)) throw new UserError("Somente a versão vigente da proposta pode ser enviada.");
     const est = p.estimate;
+    if (!est) throw new UserError("Esta proposta foi emitida em Contratos; registre o envio pela página do contrato.");
     if (paramsOf(est.parameterVersion).approval.fluxoObrigatorio && !est.approvedLevel) throw new UserError("Aprovação interna pendente.");
     let sentTo = to || null;
     if (byEmail) {
-      if (!mailConfigured()) throw new UserError("SMTP não configurado. Baixe o PDF e envie manualmente, ou desmarque o envio por e-mail.");
-      const emails = to.split(/[;,\s]+/).filter(Boolean);
-      if (!emails.length || emails.some((e) => !z.email().safeParse(e).success)) return { ok: false, errors: { to: "Informe e-mail(s) válido(s)." }, message: "Destinatário inválido." };
-      const r = await renderProposalPdf(proposalId);
-      const company = (await getSettings()).company_name;
-      await sendMail(
-        emails.join(", "),
-        `Proposta comercial ${p.number} — ${company}`,
-        `${message ? message + "\n\n" : ""}Segue em anexo a proposta ${p.number} (${p.title}), no valor total de ${fmtBRL(p.total.toString())}.`,
-        mailLayout({
-          title: `Proposta ${p.number}`,
-          paragraphs: [...(message ? [message] : []), `Segue em anexo a proposta comercial ${p.number} — ${p.title}.`, `Valor total: ${fmtBRL(p.total.toString())}.`],
-          footer: company,
-        }),
-        [{ filename: `${p.number}.pdf`, content: r!.pdf, contentType: "application/pdf" }],
-      );
-      sentTo = emails.join(", ");
+      const r = await emailProposal(p, to, message);
+      if (!r.ok) return r.state;
+      sentTo = r.sentTo;
     }
     await db.$transaction(async (tx) => {
       await tx.commercialProposal.update({ where: { id: p.id }, data: { status: "ENVIADA", sentAt: new Date(), sentTo } });

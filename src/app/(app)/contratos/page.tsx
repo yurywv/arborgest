@@ -44,7 +44,7 @@ export default async function ContractsPage({ searchParams }: { searchParams: Pr
     <>
       <PageHeader title="Contratos" actions={hasPermission(user.permissions, "contracts:write") && <LinkButton href="/contratos/novo" variant="primary" icon={Plus}>Novo contrato</LinkButton>} />
       <FilterForm>
-        <SearchBox defaultValue={q} placeholder="Número ou objeto" />
+        <SearchBox defaultValue={q} />
         <FilterSelect name="cliente" label="Cliente" options={clients} value={clientId} />
         <FilterSelect name="status" label="Status" options={enumOptions(CONTRACT_STATUS)} value={status} />
         <FilterSelect name="vencimento" label="Vencimento" options={[{ value: "60", label: "Próximos 60 dias" }]} value={venc} />

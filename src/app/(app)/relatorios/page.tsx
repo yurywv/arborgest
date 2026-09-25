@@ -54,7 +54,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
               {[...params].filter(([k]) => !["de", "ate", "arvore", "cliente", "status_os"].includes(k)).map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
               {meta.key === "historico" && (
                 <label className="flex-1"><span className="mb-0.5 block text-[11px] font-medium text-stone-500">Código da árvore</span>
-                  <input name="arvore" defaultValue={spGet(sp, "arvore")} placeholder="ARB-000001" className="input min-h-10 font-mono" /></label>
+                  <input name="arvore" defaultValue={spGet(sp, "arvore")} className="input min-h-10 font-mono" autoComplete="off" /></label>
               )}
               {meta.key === "ordens-servico" && <>
                 <FilterSelect name="cliente" label="Cliente" options={options.clients} value={spGet(sp, "cliente")} />

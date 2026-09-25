@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { formatAddress } from "@/lib/address";
 import { notFound } from "next/navigation";
 import { CalendarCheck, CheckCircle2, Pencil, Play, Trash2, XCircle } from "lucide-react";
 import { db } from "@/lib/db";
@@ -82,7 +83,7 @@ export default async function WorkOrderDetail({ params }: { params: Promise<{ id
           ]} />
           {w.description && <p className="mt-4 text-sm whitespace-pre-line">{w.description}</p>}
           {w.notes && <p className="mt-2 text-sm whitespace-pre-line text-stone-600">{w.notes}</p>}
-          {w.property?.address && <p className="mt-2 text-xs text-stone-500">Endereço: {[w.property.address, w.property.number, w.property.district, w.property.city].filter(Boolean).join(", ")}</p>}
+          {w.property?.address && <p className="mt-2 text-xs text-stone-500">Endereço: {formatAddress({ address: w.property.address, number: w.property.number, complement: w.property.complement, district: w.property.district, city: w.property.city, state: w.property.state })}</p>}
         </Card>
         <Card title={`Intervenções (${w.interventions.length})`}>
           {w.interventions.length === 0 ? <p className="text-sm text-stone-500">Nenhuma intervenção vinculada.</p> : (

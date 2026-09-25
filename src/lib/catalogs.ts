@@ -410,12 +410,21 @@ export const PHOTO_TYPES = opts({
 });
 
 export const DOCUMENT_TYPES = opts({
+  CONTRATO: "Contrato assinado",
+  ADITIVO: "Aditivo contratual",
+  PROPOSTA_ASSINADA: "Proposta assinada",
+  PROPOSTA: "Proposta (outra)",
+  CONTRATO_SOCIAL: "Contrato social / estatuto",
+  CARTAO_CNPJ: "Cartão CNPJ",
+  PROCURACAO: "Procuração / documento do representante",
+  ORDEM_COMPRA: "Pedido / ordem de compra",
+  NOTA_FISCAL: "Nota fiscal / comprovante",
+  ART: "ART / RRT",
   LAUDO: "Laudo",
   AUTORIZACAO: "Autorização",
   RELATORIO: "Relatório",
-  CONTRATO: "Contrato",
   DOCUMENTO_AMBIENTAL: "Documento ambiental",
-  PDF: "PDF / outro",
+  PDF: "Outro",
 });
 
 export const enumOptions = (m: Record<string, string>): Option[] =>

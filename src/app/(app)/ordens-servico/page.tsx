@@ -40,7 +40,7 @@ export default async function WorkOrdersPage({ searchParams }: { searchParams: P
     <>
       <PageHeader title="Ordens de serviço" actions={hasPermission(user.permissions, "workorders:write") && <LinkButton href="/ordens-servico/nova" variant="primary" icon={Plus}>Nova OS</LinkButton>} />
       <FilterForm>
-        <SearchBox defaultValue={f("q")} placeholder="Número ou descrição" />
+        <SearchBox defaultValue={f("q")} />
         <FilterSelect name="abertas" label="Situação" options={[{ value: "1", label: "Somente abertas" }]} value={f("abertas")} />
         <FilterSelect name="atrasadas" label="Prazo" options={[{ value: "1", label: "Atrasadas" }]} value={f("atrasadas")} />
         <FilterSelect name="status" label="Status" options={enumOptions(WORK_ORDER_STATUS)} value={f("status")} />

@@ -8,7 +8,7 @@ export function SectorForm({ propertyId, sector, fallback }: { propertyId: strin
   const s: Partial<Sector> = sector ?? {};
   return (
     <ActionForm action={saveSector.bind(null, propertyId, sector?.id ?? null)} resetOnSuccess={!sector} refreshOnSuccess className="grid gap-4 sm:grid-cols-2">
-      <Field name="name" label="Nome do setor/área" required defaultValue={s.name} placeholder="Ex.: Bloco A, Estacionamento Norte" />
+      <Field name="name" label="Nome do setor/área" required defaultValue={s.name} />
       <NumberField name="approxArea" label="Área aproximada" suffix="m²" defaultValue={s.approxArea} />
       <TextArea name="description" label="Descrição" rows={2} defaultValue={s.description} wrapClassName="sm:col-span-2" />
       <LocationInput simple value={{ latitude: s.latitude, longitude: s.longitude }} fallback={fallback} />

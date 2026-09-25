@@ -8,7 +8,7 @@ import type { PricingEstimateStatus } from "@prisma/client";
 import { ActionForm, Checkbox, Field, SubmitButton, TextArea } from "@/components/form";
 import type { ActionState } from "@/lib/action-state";
 import {
-  adjustItem, changeStatus, createWorkOrdersFromEstimate, decideApproval, repriceWithActiveParams, saveItem, setDiscount, setEstimateMargin,
+  adjustItem, changeStatus, createWorkOrdersFromEstimate, decideApproval, repriceWithActiveParams, saveItem, setCommission, setDiscount, setEstimateMargin,
 } from "../actions";
 import { PricingSimulator, type SimulatorProps } from "@/components/pricing/simulator";
 
@@ -83,7 +83,7 @@ export function AdjustItem({ estimateId, itemId, marginOverride, extraCost, pric
             <p className="mb-3 text-xs text-stone-500">O preço calculado original é preservado. Deixe em branco para remover o ajuste.</p>
             <ActionForm action={adjustItem.bind(null, estimateId, itemId)} className="space-y-3" onSuccess={() => setOpen(false)} refreshOnSuccess>
               <div className="grid grid-cols-2 gap-3">
-                <Field name="marginOverride" label="Margem (%)" inputMode="decimal" defaultValue={pctStr} placeholder="35" hint="≥ 0% e < 100%" />
+                <Field name="marginOverride" label="Margem (%)" inputMode="decimal" defaultValue={pctStr} hint="≥ 0% e < 100%" />
                 <Field name="extraCost" label="Custo adicional (R$)" inputMode="decimal" defaultValue={brl(extraCost)} />
               </div>
               <Field name="priceOverride" label="Preço final do item (R$)" inputMode="decimal" defaultValue={brl(priceOverride)} hint="Se preenchido, prevalece sobre margem e custo adicional." />
@@ -127,10 +127,34 @@ export function EstimateMarginForm({ estimateId, current, defaultPct }: { estima
   const pct = current ? String(Math.round(Number(current) * 1e6) / 1e4).replace(".", ",") : "";
   return (
     <ActionForm action={setEstimateMargin.bind(null, estimateId)} className="space-y-3" refreshOnSuccess>
-      <Field name="marginPercent" label="Margem de lucro (%)" inputMode="decimal" defaultValue={pct} placeholder={defaultPct} suffix="%"
+      <Field name="marginPercent" label="Margem de lucro (%)" inputMode="decimal" defaultValue={pct} suffix="%"
         hint={`Em branco = padrão (${defaultPct}%). Não pode ser negativa. Vale para todos os itens sem margem ou preço próprios.`} />
       <TextArea name="marginReason" label="Motivo" rows={2} required />
       <SubmitButton variant="secondary">Aplicar margem</SubmitButton>
+    </ActionForm>
+  );
+}
+
+export function CommissionForm({ estimateId, percent, base, to }: { estimateId: string; percent: string | null; base: string | null; to: string | null }) {
+  const pct = percent ? String(Math.round(Number(percent) * 1e6) / 1e4).replace(".", ",") : "";
+  return (
+    <ActionForm action={setCommission.bind(null, estimateId)} className="space-y-3" refreshOnSuccess>
+      <Field name="commissionPercent" label="Comissão (%)" inputMode="decimal" defaultValue={pct} suffix="%" hint="Em branco = sem comissão. Não pode ser negativa." />
+      <fieldset>
+        <legend className="label">Aplicar sobre</legend>
+        <div className="space-y-2">
+          {([["TOTAL", "Valor total da proposta", "Preço negociado, como vendido ao cliente."],
+             ["PROFIT", "Margem de lucro (excluídos os impostos)", "Receita − impostos − custo operacional."]] as const).map(([v, l, h]) => (
+            <label key={v} className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-stone-200 p-2.5 text-sm has-checked:border-brand-400 has-checked:bg-brand-50">
+              <input type="radio" name="commissionBase" value={v} defaultChecked={(base ?? "TOTAL") === v} className="mt-0.5 size-4 accent-brand-600" />
+              <span><b className="font-medium">{l}</b><span className="block text-xs text-stone-500">{h}</span></span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      <Field name="commissionTo" label="Comissionado" defaultValue={to} />
+      <TextArea name="commissionReason" label="Motivo" rows={2} required />
+      <SubmitButton variant="secondary">Aplicar comissão</SubmitButton>
     </ActionForm>
   );
 }

@@ -15,7 +15,7 @@ export function ProposalForm({ estimateId, draft, contacts }: { estimateId: stri
       <FormSection title="Documento" description="Custos internos, margens e salários NÃO aparecem na proposta.">
         <Field name="title" label="Título" required defaultValue={draft.title} wrapClassName="sm:col-span-2" />
         <SelectField name="contactId" label="Aos cuidados de (contato)" options={contacts} defaultValue={draft.contactId} placeholder="—" />
-        <Field name="validUntil" label="Validade" type="date" defaultValue={toInputDate(draft.validUntil)} />
+        <Field name="validUntil" label="Validade" type="date" defaultValue={draft.validUntil ? toInputDate(draft.validUntil) : undefined} hint="Em branco: validade do orçamento." />
         <TextArea name="object" label="Objeto" required rows={3} defaultValue={draft.object} wrapClassName="sm:col-span-2" />
         <TextArea name="scope" label="Escopo" rows={5} defaultValue={draft.scope} wrapClassName="sm:col-span-2" />
       </FormSection>
@@ -33,12 +33,12 @@ export function ProposalForm({ estimateId, draft, contacts }: { estimateId: stri
   );
 }
 
-export function SendProposalForm({ proposalId, defaultTo, smtp }: { proposalId: string; defaultTo: string; smtp: boolean }) {
+export function SendProposalForm({ proposalId, smtp }: { proposalId: string; smtp: boolean }) {
   return (
     <ActionForm action={sendProposal.bind(null, proposalId)} className="space-y-3" refreshOnSuccess>
-      <Field name="to" label="Destinatário(s)" defaultValue={defaultTo} placeholder="email@cliente.com.br" hint="Separe vários e-mails por vírgula." />
+      <Field name="to" label="Destinatário(s)" hint="Separe vários e-mails por vírgula." />
       <TextArea name="message" label="Mensagem" rows={3} />
-      <Checkbox name="byEmail" label="Enviar por e-mail com o PDF anexo" defaultChecked={smtp}
+      <Checkbox name="byEmail" label="Enviar por e-mail com o PDF anexo"
         hint={smtp ? "Usa o SMTP configurado." : "SMTP não configurado — apenas registra o envio (baixe o PDF e envie manualmente)."} />
       <SubmitButton>Registrar envio</SubmitButton>
     </ActionForm>

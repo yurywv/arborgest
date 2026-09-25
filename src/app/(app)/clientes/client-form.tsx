@@ -23,7 +23,9 @@ export function ClientForm({ client }: { client?: Client }) {
         <Field name="website" label="Site" defaultValue={c.website} wrapClassName="sm:col-span-2" />
       </FormSection>
       <FormSection title="Endereço">
-        <Field name="address" label="Endereço" defaultValue={c.address} wrapClassName="sm:col-span-2" />
+        <Field name="address" label="Logradouro" defaultValue={c.address} hint="Sem o número — informe-o no campo ao lado." wrapClassName="sm:col-span-2" />
+        <Field name="addressNumber" label="Número" defaultValue={c.addressNumber} />
+        <Field name="addressComplement" label="Complemento" defaultValue={c.addressComplement} />
         <Field name="district" label="Bairro" defaultValue={c.district} />
         <Field name="city" label="Cidade" defaultValue={c.city} />
         <SelectField name="state" label="Estado" options={UFS} defaultValue={c.state} />

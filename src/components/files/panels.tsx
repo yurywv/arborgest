@@ -8,7 +8,7 @@ import { fileUrl } from "@/lib/files";
 import { deleteDocument, deletePhoto } from "./actions";
 
 type PhotoRow = Photo & { uploadedBy?: Pick<User, "name"> | null };
-type DocRow = Document & { uploadedBy?: Pick<User, "name"> | null };
+type DocRow = Document & { uploadedBy?: Pick<User, "name"> | null; proposal?: { number: string } | null };
 
 export function PhotoGallery({ photos, canDelete }: { photos: PhotoRow[]; canDelete?: boolean }) {
   if (!photos.length)
@@ -55,7 +55,7 @@ export function DocumentList({ docs, canDelete }: { docs: DocRow[]; canDelete?: 
           <div className="min-w-0 flex-1">
             <a href={fileUrl(d.storageKey)} target="_blank" rel="noopener noreferrer" className="link block truncate">{d.fileName}</a>
             <p className="truncate text-xs text-stone-500">
-              {labelOf(DOCUMENT_TYPES, d.type)} · {size(d.size)} · {fmtDateTime(d.createdAt)}{d.uploadedBy ? ` · ${d.uploadedBy.name}` : ""}
+              {labelOf(DOCUMENT_TYPES, d.type)}{d.proposal ? ` (${d.proposal.number})` : ""} · {size(d.size)} · {fmtDateTime(d.createdAt)}{d.uploadedBy ? ` · ${d.uploadedBy.name}` : ""}
               {d.description ? ` — ${d.description}` : ""}
             </p>
           </div>

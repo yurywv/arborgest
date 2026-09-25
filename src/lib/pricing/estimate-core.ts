@@ -4,7 +4,7 @@
 import { createHash } from "node:crypto";
 import type { Prisma, PricingParameterVersion } from "@prisma/client";
 import { dec, money } from "./decimal";
-import { adjustedItemPrice, estimateTotals, requiredApprovalLevel } from "./policy";
+import { adjustedItemPrice, estimateTotals, requiredApprovalLevel, type CommissionBase } from "./policy";
 import type { CalcResult, PricingParams, ServiceCode, ServiceInputs } from "./types";
 
 type Tx = Prisma.TransactionClient;
@@ -100,8 +100,12 @@ export async function recomputeEstimate(tx: Tx, estimateId: string) {
     items: rows, tax,
     discountType: (est.discountType as "PERCENT" | "AMOUNT" | null) ?? null,
     discountValue: est.discountValue ? dec(est.discountValue.toString()) : null,
+    commission: est.commissionPercent && est.commissionBase
+      ? { percent: dec(est.commissionPercent.toString()), base: est.commissionBase as CommissionBase } : null,
   });
-  const required = rows.length ? requiredApprovalLevel(t.effectiveMargin, params.approval) : null;
+  // A alçada considera a margem depois da comissão (custo interno que reduz o resultado).
+  const hasCommission = !t.commission.isZero();
+  const required = rows.length ? requiredApprovalLevel(hasCommission ? t.marginAfterCommission : t.effectiveMargin, params.approval) : null;
   return tx.pricingEstimate.update({
     where: { id: estimateId },
     data: {
@@ -113,6 +117,8 @@ export async function recomputeEstimate(tx: Tx, estimateId: string) {
       taxRate: tax.toString(),
       calculatedMargin: t.calculatedMargin.toDecimalPlaces(6).toString(),
       effectiveMargin: t.effectiveMargin.toDecimalPlaces(6).toString(),
+      commissionAmount: t.commission.toString(),
+      marginAfterCommission: hasCommission ? t.marginAfterCommission.toDecimalPlaces(6).toString() : null,
       requiredApproval: required,
     },
   });

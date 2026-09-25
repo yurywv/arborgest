@@ -26,6 +26,7 @@ export function ActionForm({
   onSuccess,
   refreshOnSuccess,
   id,
+  autoComplete = "off",
 }: {
   action: FormAction;
   children: React.ReactNode;
@@ -34,6 +35,8 @@ export function ActionForm({
   onSuccess?: (s: ActionState) => void;
   refreshOnSuccess?: boolean;
   id?: string;
+  /** Padrão "off": o sistema não sugere conteúdo. Telas de login/senha usam os tokens próprios nos campos. */
+  autoComplete?: "on" | "off";
 }) {
   const [state, formAction, pending] = useActionState(action, null);
   const ref = useRef<HTMLFormElement>(null);
@@ -64,6 +67,7 @@ export function ActionForm({
       id={id}
       className={className}
       noValidate
+      autoComplete={autoComplete}
       onSubmit={(e) => {
         e.preventDefault();
         const fd = new FormData(e.currentTarget);
@@ -129,6 +133,7 @@ export function Field({ name, label, hint, defaultValue, wrapClassName, classNam
     <input
       id={`f-${name}`}
       name={name}
+      autoComplete="off"
       defaultValue={defaultValue ?? undefined}
       aria-invalid={!!err}
       aria-describedby={err ? `e-${name}` : undefined}
@@ -240,7 +245,6 @@ export function SearchSelectField({
           aria-activedescendant={open && results.items[active] ? `${listId}-${active}` : undefined}
           autoComplete="off"
           value={text}
-          placeholder={emptyLabel ?? placeholder}
           className={clsx("input pr-10", err && "input-error")}
           onFocus={(e) => { e.currentTarget.select(); setOpen(true); setActive(0); }}
           onBlur={() => { setOpen(false); setText(selectedLabel); }}
@@ -293,7 +297,7 @@ export function TextArea({
         id={`f-${name}`}
         name={name}
         rows={rows}
-        placeholder={placeholder}
+        autoComplete="off"
         defaultValue={defaultValue ?? undefined}
         aria-invalid={!!err}
         className={clsx("input", err && "input-error")}

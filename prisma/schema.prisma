@@ -182,24 +182,26 @@ model PasswordResetToken {
 // ─────────────────────────── CRM ───────────────────────────
 
 model Client {
-  id         String       @id @default(cuid())
-  legalName  String // razão social / nome completo
-  tradeName  String? // nome fantasia
-  document   String?      @unique // CPF/CNPJ (somente dígitos)
-  clientType String // PF, PJ, ORGAO_PUBLICO, CONDOMINIO
-  segment    String?
-  phone      String?
-  email      String?
-  website    String?
-  address    String?
-  district   String?
-  city       String?
-  state      String?      @db.VarChar(2)
-  zipCode    String?
-  notes      String?
-  status     ClientStatus @default(ATIVO)
-  createdAt  DateTime     @default(now())
-  updatedAt  DateTime     @updatedAt
+  id                String       @id @default(cuid())
+  legalName         String // razão social / nome completo
+  tradeName         String? // nome fantasia
+  document          String?      @unique // CPF/CNPJ (somente dígitos)
+  clientType        String // PF, PJ, ORGAO_PUBLICO, CONDOMINIO
+  segment           String?
+  phone             String?
+  email             String?
+  website           String?
+  address           String?
+  addressNumber     String? // número do imóvel (separado do logradouro)
+  addressComplement String?
+  district          String?
+  city              String?
+  state             String?      @db.VarChar(2)
+  zipCode           String?
+  notes             String?
+  status            ClientStatus @default(ATIVO)
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
 
   contacts         Contact[]
   opportunities    Opportunity[]
@@ -282,6 +284,7 @@ model Contract {
   status            ContractStatus   @default(ATIVO)
   notes             String?
   documents         Document[]
+  proposals         CommercialProposal[]
   pricingEstimateId String?
   pricingEstimate   PricingEstimate? @relation(fields: [pricingEstimateId], references: [id], onDelete: SetNull)
   createdAt         DateTime         @default(now())
@@ -386,6 +389,7 @@ model Tree {
   coordSource   String? // GPS_DISPOSITIVO, MAPA, GNSS_RTK, IMPORTACAO, MANUAL
   geodeticDatum String    @default("WGS84 / EPSG:4326")
   address       String?
+  addressNumber String? // número do imóvel em frente/mais próximo (separado do logradouro)
   physicalRef   String? // referência física (ex.: "em frente ao portão 2")
 
   // Identificação botânica
@@ -644,12 +648,19 @@ model Document {
   treeId       String?
   tree         Tree?      @relation(fields: [treeId], references: [id], onDelete: Cascade)
   contractId   String?
-  contract     Contract?  @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  contract     Contract?  @relation(fields: [contractId], references: [id], onDelete: SetNull)
   workOrderId  String?
   workOrder    WorkOrder? @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+  /// Proposta a que o documento se refere (PDF emitido ou proposta assinada pelo cliente).
+  proposalId   String?
+  proposal     CommercialProposal? @relation(fields: [proposalId], references: [id], onDelete: SetNull)
   uploadedById String?
   uploadedBy   User?      @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
   createdAt    DateTime   @default(now())
+
+  @@index([clientId])
+  @@index([contractId])
+  @@index([proposalId])
 }
 
 // ─────────────────────── Sistema ───────────────────────
@@ -735,6 +746,7 @@ enum PricingOverrideType {
   DESCONTO_PERCENTUAL
   DESCONTO_VALOR
   REMOCAO
+  COMISSAO
 }
 
 enum ProposalStatus {
@@ -889,27 +901,35 @@ model PricingEstimate {
   commercialNotes    String?
 
   // Totais (recalculados no servidor a cada alteração)
-  calculatedTotal      Decimal        @default(0) @db.Decimal(14, 2) // soma dos preços calculados originais
-  itemsTotal           Decimal        @default(0) @db.Decimal(14, 2) // soma dos preços dos itens após ajustes
+  calculatedTotal       Decimal        @default(0) @db.Decimal(14, 2) // soma dos preços calculados originais
+  itemsTotal            Decimal        @default(0) @db.Decimal(14, 2) // soma dos preços dos itens após ajustes
   /// Margem de lucro definida para o orçamento (fração ≥ 0), aplicada aos itens sem margem/preço próprios.
-  marginOverride       Decimal?       @db.Decimal(10, 6)
-  marginReason         String?
-  discountType         String? // PERCENT | AMOUNT
-  discountValue        Decimal?       @db.Decimal(14, 4)
-  discountReason       String?
-  discountAmount       Decimal        @default(0) @db.Decimal(14, 2)
-  negotiatedTotal      Decimal        @default(0) @db.Decimal(14, 2)
-  operationalCostTotal Decimal        @default(0) @db.Decimal(14, 2)
-  taxRate              Decimal        @default(0) @db.Decimal(8, 6)
-  calculatedMargin     Decimal?       @db.Decimal(10, 6)
-  effectiveMargin      Decimal?       @db.Decimal(10, 6)
-  requiredApproval     ApprovalLevel?
-  approvedLevel        ApprovalLevel?
-  approvedAt           DateTime?
-  sentAt               DateTime?
-  acceptedAt           DateTime?
-  rejectedAt           DateTime?
-  closeReason          String?
+  marginOverride        Decimal?       @db.Decimal(10, 6)
+  marginReason          String?
+  /// Comissão (custo interno; não altera o preço da proposta). Base: TOTAL = valor total da proposta;
+  /// PROFIT = margem de lucro excluídos os impostos (receita − impostos − custo operacional).
+  commissionPercent     Decimal?       @db.Decimal(10, 6)
+  commissionBase        String?
+  commissionTo          String?
+  commissionReason      String?
+  commissionAmount      Decimal        @default(0) @db.Decimal(14, 2)
+  marginAfterCommission Decimal?       @db.Decimal(10, 6)
+  discountType          String? // PERCENT | AMOUNT
+  discountValue         Decimal?       @db.Decimal(14, 4)
+  discountReason        String?
+  discountAmount        Decimal        @default(0) @db.Decimal(14, 2)
+  negotiatedTotal       Decimal        @default(0) @db.Decimal(14, 2)
+  operationalCostTotal  Decimal        @default(0) @db.Decimal(14, 2)
+  taxRate               Decimal        @default(0) @db.Decimal(8, 6)
+  calculatedMargin      Decimal?       @db.Decimal(10, 6)
+  effectiveMargin       Decimal?       @db.Decimal(10, 6)
+  requiredApproval      ApprovalLevel?
+  approvedLevel         ApprovalLevel?
+  approvedAt            DateTime?
+  sentAt                DateTime?
+  acceptedAt            DateTime?
+  rejectedAt            DateTime?
+  closeReason           String?
 
   createdById String?
   createdBy   User?    @relation("EstimateCreator", fields: [createdById], references: [id], onDelete: SetNull)
@@ -1023,8 +1043,11 @@ model CommercialProposal {
   id               String                   @id @default(cuid())
   number           String                   @unique // PROP-2026-00124
   version          Int                      @default(1)
-  estimateId       String
-  estimate         PricingEstimate          @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+  /// Origem: orçamento da precificação ou contrato (proposta avulsa emitida em Contratos).
+  estimateId       String?
+  estimate         PricingEstimate?         @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+  contractId       String?
+  contract         Contract?                @relation(fields: [contractId], references: [id], onDelete: Cascade)
   status           ProposalStatus           @default(RASCUNHO)
   date             DateTime                 @default(now())
   validUntil       DateTime?
@@ -1056,8 +1079,11 @@ model CommercialProposal {
   createdAt        DateTime                 @default(now())
   updatedAt        DateTime                 @updatedAt
   items            CommercialProposalItem[]
+  documents        Document[]
 
   @@index([estimateId])
+  @@index([contractId])
+  @@index([clientId])
 }
 
 model CommercialProposalItem {

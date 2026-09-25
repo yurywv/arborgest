@@ -9,7 +9,7 @@ export function SpeciesForm({ species }: { species?: Species }) {
   return (
     <ActionForm action={saveSpecies.bind(null, species?.id ?? null)} className="space-y-4">
       <FormSection title="Espécie">
-        <Field name="scientificName" label="Nome científico" required defaultValue={s.scientificName} placeholder="Handroanthus chrysotrichus" className="italic" />
+        <Field name="scientificName" label="Nome científico" required defaultValue={s.scientificName} className="italic" />
         <Field name="popularName" label="Nome popular" required defaultValue={s.popularName} />
         <Field name="family" label="Família botânica" defaultValue={s.family} />
         <Field name="genus" label="Gênero" defaultValue={s.genus} hint="Em branco: extraído do nome científico." />

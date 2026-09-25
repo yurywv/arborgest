@@ -33,6 +33,19 @@ Botões **Precificar** também aparecem na oportunidade (funil e edição), na p
 - O preço calculado pelo motor é preservado; a mudança fica em `PricingOverride` e na trilha de auditoria, e invalida aprovações já concedidas. Duplicação e revisão mantêm a margem do orçamento.
 - O simulador do item mostra o preço que irá para a proposta com a margem do orçamento.
 
+## Preenchimento, edição e registro
+
+- **Nenhum conteúdo é sugerido**: os campos não têm textos de exemplo e o navegador não completa valores (exceto login/senha). O simulador começa sem serviço e com todos os campos em branco; o preço só é calculado quando os campos obrigatórios forem preenchidos, e "Haverá acompanhamento técnico?" exige resposta Sim/Não. A proposta é redigida pelo usuário (sem textos padrão). Campos opcionais em branco usam o valor padrão dos parâmetros, informado na dica do campo.
+- **Todo orçamento é editável**, em qualquer status: incluir/alterar/excluir itens, ajustes, margem, desconto e comissão. Em orçamento aprovado/enviado, a alteração exige nova aprovação; em aceito, recusado, cancelado ou expirado, o orçamento é **reaberto** para "Em elaboração". Propostas emitidas e não enviadas ficam como substituídas; as enviadas/aceitas permanecem no histórico. Orçamentos sem proposta enviada/aceita, contrato ou OS podem ser excluídos.
+- **Tudo é registrado** em `PricingAuditLog`: cada ação concluída (com valor anterior, novo e justificativa), as **tentativas recusadas** (validação, regra ou permissão, com o motivo), cálculos via API, geração de PDF e reaberturas. Consulta geral em *Administração › Parâmetros de preço › Auditoria* (filtros por ação, usuário e período) e, por orçamento, na aba *Histórico*.
+
+## Comissão
+
+- Cada orçamento pode ter uma **comissão (%)**, com comissionado (opcional) e motivo obrigatório (permissão `pricing:negotiate`, auditada e registrada em `PricingOverride`).
+- Base de cálculo à escolha: **valor total da proposta** (preço negociado, como vendido ao cliente) ou **margem de lucro, excluídos os impostos** (receita − impostos − custo operacional; se negativa, a comissão é zero).
+- É custo interno: **não altera o preço** nem aparece na proposta/PDF. A análise interna mostra comissão, resultado e margem após comissão.
+- A **alçada de aprovação** e a trava de margem negativa usam a margem após a comissão. Percentual ≥ 0% e < 100%. Duplicação e revisão mantêm a comissão; alterá-la invalida aprovações já concedidas.
+
 ## Ajustes de set/2026 (versão de parâmetros 1.1)
 
 Aplicados em produção pelo bootstrap como **nova versão de parâmetros** (a 1.0, idêntica à planilha, e os orçamentos já calculados não mudam):
@@ -138,8 +151,8 @@ Orçamentos, propostas, PDF, auditoria, indicadores e integração com CRM/OS s�
 
 | Comando | O que verifica |
 |---|---|
-| `npm run test:unit` | Fórmulas, regras v2, validações, políticas comerciais, ajustes de set/2026 e **paridade com o Excel** (17 cenários, tolerância R$ 0,01) — 88 testes |
+| `npm run test:unit` | Fórmulas, regras v2, validações, políticas comerciais, ajustes de set/2026 e **paridade com o Excel** (17 cenários, tolerância R$ 0,01) — 92 testes |
 | `npm run pricing:parity` | Regera `src/lib/pricing/parity/excel-results.json` recalculando a planilha **no Microsoft Excel** (macOS) |
 | `npx tsx scripts/pricing-parity/report.mts` | Regera o relatório `validacao-logica-legada.md` |
 | `npm run test:smoke` | Todas as rotas (inclusive precificação) com cada perfil |
-| `npm run test:e2e:pricing` | Fluxo completo no navegador (40 verificações), inclusive lei municipal, valores regionais, margem do orçamento, celular e permissões |
+| `npm run test:e2e:pricing` | Fluxo completo no navegador (50 verificações), inclusive campos sem sugestão, edição de orçamento aceito, auditoria de tentativas recusadas, comissão, lei municipal, valores regionais, margem do orçamento, celular e permissões |

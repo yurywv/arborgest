@@ -31,5 +31,9 @@ export const AUDIT_ACTION: Record<string, string> = {
   ENVIO_CLIENTE: "Envio ao cliente", CANCELAMENTO: "Cancelamento", STATUS: "Mudança de status", EXPIRACAO: "Expiração", REVISAO: "Revisão criada",
   DUPLICACAO: "Duplicação", REPRECIFICACAO: "Reprecificação", PROPOSTA_GERADA: "Proposta gerada", PDF_GERADO: "PDF gerado",
   CONTRATO_CRIADO: "Contrato criado", OS_CRIADA: "OS criada", OPORTUNIDADE_ATUALIZADA: "Oportunidade atualizada", PARAMETROS: "Parâmetros alterados",
-  TEXTOS_PROPOSTA: "Textos da proposta", SERVICO: "Serviço", EXCLUSAO: "Exclusão",
+  SERVICO: "Serviço", EXCLUSAO: "Exclusão", REABERTURA: "Reabertura para edição", TENTATIVA_RECUSADA: "Tentativa recusada",
+  COMISSAO: "Comissão", CALCULO_API: "Cálculo via API", LEI_MUNICIPAL_CRIADA: "Lei municipal cadastrada", LEI_MUNICIPAL_ALTERADA: "Lei municipal alterada",
+};
+export const PROPOSAL_STATUS_TONE: Record<string, "gray" | "blue" | "green" | "red" | "yellow" | "orange"> = {
+  RASCUNHO: "gray", EMITIDA: "blue", ENVIADA: "yellow", ACEITA: "green", RECUSADA: "red", CANCELADA: "gray", SUBSTITUIDA: "gray",
 };

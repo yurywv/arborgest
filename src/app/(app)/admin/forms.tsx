@@ -47,7 +47,7 @@ export function RoleForm({ role }: { role?: Role }) {
     <ActionForm action={saveRole.bind(null, role?.id ?? null)} className="space-y-4">
       <FormSection title="Perfil">
         <Field name="name" label="Nome" required defaultValue={r.name} />
-        <Field name="key" label="Chave" required defaultValue={r.key} readOnly={r.isSystem} className={r.isSystem ? "bg-stone-50" : ""} hint={r.isSystem ? "Perfil padrão do sistema." : "Ex.: SUPERVISOR"} />
+        <Field name="key" label="Chave" required defaultValue={r.key} readOnly={r.isSystem} className={r.isSystem ? "bg-stone-50" : ""} hint={r.isSystem ? "Perfil padrão do sistema." : "Letras maiúsculas, números e _ (sem espaços)."} />
         <TextArea name="description" label="Descrição" rows={2} defaultValue={r.description} wrapClassName="sm:col-span-2" />
       </FormSection>
       <section className="card overflow-x-auto">

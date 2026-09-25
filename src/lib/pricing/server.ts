@@ -69,7 +69,8 @@ export function serverCalculate(version: PricingParameterVersion, service: Servi
 }
 
 export const FINAL_STATUSES = ["ACEITO", "RECUSADO", "CANCELADO", "EXPIRADO"] as const;
-export const EDITABLE_STATUSES = ["RASCUNHO", "EM_ELABORACAO", "EM_APROVACAO_INTERNA", "APROVADO_INTERNAMENTE", "EM_NEGOCIACAO", "ENVIADO_CLIENTE"] as const;
+/** Todo orçamento pode ser editado; nos status finais a edição reabre o orçamento (registrado). */
+export const EDITABLE_STATUSES = ["RASCUNHO", "EM_ELABORACAO", "EM_APROVACAO_INTERNA", "APROVADO_INTERNAMENTE", "EM_NEGOCIACAO", "ENVIADO_CLIENTE", "ACEITO", "RECUSADO", "CANCELADO", "EXPIRADO"] as const;
 
 /** Marca como EXPIRADO orçamentos em aberto com validade vencida. */
 export async function expireEstimates() {

@@ -19,7 +19,7 @@ export function PropertyForm({ property, clients, clientId }: { property?: Prope
         <div className="sm:col-span-2"><Checkbox name="active" label="Propriedade ativa" defaultChecked={p.active ?? true} /></div>
       </FormSection>
       <FormSection title="Endereço">
-        <Field name="address" label="Endereço" defaultValue={p.address} wrapClassName="sm:col-span-2" />
+        <Field name="address" label="Logradouro" defaultValue={p.address} hint="Sem o número — informe-o no campo ao lado." wrapClassName="sm:col-span-2" />
         <Field name="number" label="Número" defaultValue={p.number} />
         <Field name="complement" label="Complemento" defaultValue={p.complement} />
         <Field name="district" label="Bairro" defaultValue={p.district} />

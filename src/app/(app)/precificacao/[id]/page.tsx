@@ -8,18 +8,16 @@ import { fmtDate, fmtDateTime } from "@/lib/format";
 import { clientOptions, userOptions } from "@/lib/options";
 import { mailConfigured } from "@/lib/mail";
 import { type DecimalT, dec, fmtBRL, fmtPct } from "@/lib/pricing/decimal";
-import { APPROVAL_LABEL, grantableLevel, levelCovers, type ApprovalLevelCode } from "@/lib/pricing/policy";
+import { APPROVAL_LABEL, COMMISSION_BASE_LABEL, grantableLevel, levelCovers, type ApprovalLevelCode, type CommissionBase } from "@/lib/pricing/policy";
 import { APPROVAL_STATUS, AUDIT_ACTION, ESTIMATE_STATUS, ESTIMATE_STATUS_TONE, OVERRIDE_TYPE, PROPOSAL_STATUS } from "@/lib/pricing/labels";
 import { SERVICES } from "@/lib/pricing/registry";
 import { ENGINE_LABEL, type ServiceCode } from "@/lib/pricing/types";
 import { EDITABLE_STATUSES, calcResultOf, expireEstimates, getActiveVersion, paramsOf } from "@/lib/pricing/server";
-import { proposalExtras } from "@/lib/pricing/proposal-extras";
 import { estimateFormOptions } from "@/lib/pricing/options";
-import { getProposalTexts } from "@/lib/pricing/proposal-texts-server";
 import { ActionButton } from "@/components/form";
 import { Badge, Card, DataList, EmptyState, LinkButton, PageHeader, TabLinks } from "@/components/ui";
 import { createContractFromEstimate, deleteEstimate, deleteItem, duplicateEstimate, requestApproval } from "../actions";
-import { AdjustItem, ApprovalDecision, DiscountForm, EstimateMarginForm, RepriceButton, StatusButton, WorkOrderForm } from "./controls";
+import { AdjustItem, ApprovalDecision, CommissionForm, DiscountForm, EstimateMarginForm, RepriceButton, StatusButton, WorkOrderForm } from "./controls";
 import { ProposalForm, SendProposalForm } from "./proposta/forms";
 import { EstimateForm } from "../estimate-form";
 
@@ -61,6 +59,9 @@ export default async function EstimatePage({ params, searchParams }: { params: P
   const cost = dec(e.operationalCostTotal.toString());
   const taxes = revenue.mul(tax);
   const result = revenue.minus(taxes).minus(cost);
+  const commission = dec(e.commissionAmount.toString());
+  const commissionLabel = e.commissionPercent && e.commissionBase
+    ? `${fmtPct(e.commissionPercent.toString())} sobre ${COMMISSION_BASE_LABEL[e.commissionBase as CommissionBase].toLowerCase()}` : null;
   const pendingApproval = e.approvals.find((a) => a.status === "PENDENTE");
   const myLevel = grantableLevel(user.permissions);
   const bySvc = Object.entries(e.items.reduce<Record<string, { calc: DecimalT; neg: DecimalT; qty: number }>>((acc, i) => {
@@ -91,7 +92,8 @@ export default async function EstimatePage({ params, searchParams }: { params: P
           {can("pricing:write") && editable && <LinkButton href={`/precificacao/${e.id}/item`} variant="primary" icon={Plus}>Adicionar serviço</LinkButton>}
           {can("pricing:write") && <ActionButton action={duplicateEstimate.bind(null, e.id, "copy")} confirm="Criar um novo orçamento com os mesmos itens (recalculados com os parâmetros vigentes)?"><Copy className="size-4" /> Duplicar</ActionButton>}
           {can("pricing:write") && e.status !== "ACEITO" && <ActionButton action={duplicateEstimate.bind(null, e.id, "revision")} confirm="Criar uma revisão deste orçamento? O atual será cancelado (substituído)."><GitBranch className="size-4" /> Revisão</ActionButton>}
-          {can("pricing:write") && e.status === "RASCUNHO" && e.proposals.length === 0 && <ActionButton action={deleteEstimate.bind(null, e.id)} confirm="Excluir este rascunho?" redirectTo="/precificacao" variant="danger-ghost"><Trash2 className="size-4" /></ActionButton>}
+          {can("pricing:write") && !e.contracts.length && !e.workOrders.length && !e.proposals.some((p) => ["ENVIADA", "ACEITA"].includes(p.status)) &&
+            <ActionButton action={deleteEstimate.bind(null, e.id)} confirm="Excluir este orçamento? A exclusão fica registrada na auditoria." redirectTo="/precificacao" variant="danger-ghost"><Trash2 className="size-4" /> Excluir</ActionButton>}
         </>}
       />
 
@@ -105,6 +107,12 @@ export default async function EstimatePage({ params, searchParams }: { params: P
       {aba === "resumo" && (
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
           <div className="space-y-4">
+            {["ACEITO", "RECUSADO", "CANCELADO", "EXPIRADO"].includes(e.status) && can("pricing:write") && (
+              <div role="status" className="rounded-2xl border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900">
+                Orçamento <b>{ESTIMATE_STATUS[e.status].toLowerCase()}</b>. Ele continua editável: ao incluir, alterar ou excluir itens e valores,
+                volta para <b>Em elaboração</b> e a alteração fica registrada no histórico.
+              </div>
+            )}
             {e.parameterVersionId !== active.id && editable && (
               <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
                 <span>Este orçamento foi calculado com os parâmetros v{e.parameterVersion.label}. A versão vigente é a v{active.label}. Os valores <b>não</b> mudam automaticamente.</span>
@@ -211,8 +219,8 @@ export default async function EstimatePage({ params, searchParams }: { params: P
                     <StatusButton id={e.id} target="ACEITO" label="Cliente aceitou" variant="primary" prompt="Observação do aceite (opcional):" />
                     <StatusButton id={e.id} target="RECUSADO" label="Cliente recusou" prompt="Motivo da recusa:" required variant="danger-ghost" />
                   </>}
-                  {can("pricing:write") && editable && <StatusButton id={e.id} target="CANCELADO" label="Cancelar" prompt="Motivo do cancelamento:" required variant="danger-ghost" />}
-                  {can("pricing:write") && ["RECUSADO", "EXPIRADO"].includes(e.status) && <StatusButton id={e.id} target="EM_ELABORACAO" label="Reabrir" prompt="Motivo da reabertura:" required />}
+                  {can("pricing:write") && e.status !== "CANCELADO" && <StatusButton id={e.id} target="CANCELADO" label="Cancelar" prompt="Motivo do cancelamento:" required variant="danger-ghost" />}
+                  {can("pricing:write") && ["RECUSADO", "EXPIRADO", "CANCELADO", "ACEITO"].includes(e.status) && <StatusButton id={e.id} target="EM_ELABORACAO" label="Reabrir" prompt="Motivo da reabertura:" required />}
                 </div>
                 {e.status === "ACEITO" && (
                   <div className="space-y-2 border-t border-stone-100 pt-3">
@@ -235,6 +243,11 @@ export default async function EstimatePage({ params, searchParams }: { params: P
                   ["Resultado (lucro bruto)", <b key="r" className={result.lt(0) ? "text-red-700" : "text-emerald-700"}>{fmtBRL(result.toString())}</b>],
                   ["Margem original (preço calculado)", e.calculatedMargin === null ? "—" : fmtPct(e.calculatedMargin.toString())],
                   ["Margem efetiva (após ajustes/desconto)", e.effectiveMargin === null ? "—" : <b key="m">{fmtPct(e.effectiveMargin.toString())}</b>],
+                  ...(commissionLabel ? [
+                    [`Comissão (${commissionLabel})${e.commissionTo ? ` — ${e.commissionTo}` : ""}`, <span key="c" className="text-red-700">− {fmtBRL(commission.toString())}</span>],
+                    ["Resultado após comissão", <b key="rc" className={result.minus(commission).lt(0) ? "text-red-700" : "text-emerald-700"}>{fmtBRL(result.minus(commission).toString())}</b>],
+                    ["Margem após comissão (define a alçada)", <b key="mc">{fmtPct(e.marginAfterCommission?.toString() ?? 0)}</b>],
+                  ] as [string, React.ReactNode][] : []),
                   ["Desconto total vs. calculado", fmtBRL(dec(e.calculatedTotal.toString()).minus(revenue).toString())],
                 ]} />
                 <p className="mt-3 text-[11px] text-stone-500">Margem efetiva = (receita − impostos − custo) ÷ (receita − impostos). Limites: comercial ≥ {fmtPct(params_.approval.margemComercial)}, gerencial ≥ {fmtPct(params_.approval.margemGerencial)}.</p>
@@ -248,6 +261,16 @@ export default async function EstimatePage({ params, searchParams }: { params: P
                   {e.marginReason && <span className="block text-xs text-stone-500">Motivo: {e.marginReason}</span>}
                 </p>
                 <EstimateMarginForm estimateId={e.id} current={e.marginOverride?.toString() ?? null} defaultPct={defaultMarginPct} />
+              </Card>
+            )}
+
+            {can("pricing:negotiate") && editable && (
+              <Card title="Comissão">
+                <p className="mb-3 text-sm text-stone-600">
+                  {commissionLabel ? <>Vigente: <b>{commissionLabel}</b> = {fmtBRL(commission.toString())}{e.commissionTo && <> · {e.commissionTo}</>}</> : "Sem comissão."}
+                  <span className="block text-xs text-stone-500">Custo interno: não altera o preço nem aparece na proposta.</span>
+                </p>
+                <CommissionForm estimateId={e.id} percent={e.commissionPercent?.toString() ?? null} base={e.commissionBase} to={e.commissionTo} />
               </Card>
             )}
 
@@ -289,22 +312,11 @@ export default async function EstimatePage({ params, searchParams }: { params: P
 async function ProposalTab({ estimate: e, canWrite, canProposal }: {
   estimate: NonNullable<Awaited<ReturnType<typeof loadForTab>>>; canWrite: boolean; canProposal: boolean;
 }) {
-  const texts = await getProposalTexts();
   const contacts = await db.contact.findMany({ where: { clientId: e.clientId }, select: { id: true, name: true, email: true }, orderBy: { name: "asc" } });
-  const calcs = await db.pricingCalculation.findMany({ where: { id: { in: e.items.map((i) => i.currentCalculationId).filter((x): x is string => !!x) } }, select: { id: true, snapshot: true } });
-  const items = e.items.map((i) => {
-    const c = calcs.find((x) => x.id === i.currentCalculationId);
-    const extras = proposalExtras(c ? calcResultOf(c) : null, i.inputs as Record<string, unknown>);
-    return { name: SERVICES[i.serviceCode as ServiceCode]?.name ?? i.serviceCode, qty: i.quantity, desc: [i.description, ...extras].filter(Boolean).join(" ") };
-  });
+  // Nenhum conteúdo sugerido: a proposta começa em branco e é redigida pelo usuário.
   const draft = {
-    title: e.title ? `Proposta — ${e.title}` : `Proposta de serviços arbóreos — ${e.client.tradeName ?? e.client.legalName}`,
-    object: `Prestação de serviços de ${items.map((i) => `${i.name.toLowerCase()} (${i.qty} árvore${i.qty === 1 ? "" : "s"})`).join(", ")}${e.property ? ` em ${e.property.name}` : ""}.`,
-    scope: items.map((i) => `• ${i.name}: ${i.qty} exemplar(es)${i.desc ? ` — ${i.desc}` : ""}.`).join("\n"),
-    contactId: e.contactId, validUntil: e.validUntil,
-    deadline: texts.proposal_deadline, paymentTerms: texts.proposal_payment_terms, conditions: texts.proposal_conditions,
-    assumptions: texts.proposal_assumptions, exclusions: texts.proposal_exclusions, responsibilities: texts.proposal_responsibilities,
-    notes: e.commercialNotes ?? "",
+    title: "", object: "", scope: "", contactId: null, validUntil: null, deadline: "", paymentTerms: "",
+    conditions: "", assumptions: "", exclusions: "", responsibilities: "", notes: "",
   };
   const smtp = mailConfigured();
   return (
@@ -327,7 +339,7 @@ async function ProposalTab({ estimate: e, canWrite, canProposal }: {
               {canWrite && ["EMITIDA", "ENVIADA"].includes(p.status) && (
                 <details className="rounded-xl border border-stone-200 p-3" open={p.status === "EMITIDA"}>
                   <summary className="cursor-pointer text-sm font-medium">Enviar ao cliente</summary>
-                  <div className="mt-3"><SendProposalForm proposalId={p.id} defaultTo={p.contact?.email ?? e.contact?.email ?? ""} smtp={smtp} /></div>
+                  <div className="mt-3"><SendProposalForm proposalId={p.id} smtp={smtp} /></div>
                 </details>
               )}
             </div>

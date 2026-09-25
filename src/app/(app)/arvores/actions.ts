@@ -1,5 +1,6 @@
 "use server";
 
+import { splitAddress } from "@/lib/address";
 import { z } from "zod";
 import { TreeStatus } from "@prisma/client";
 import { db } from "@/lib/db";
@@ -37,6 +38,7 @@ const treeSchema = z
     responsibleId: optId(),
     ...location,
     address: optStr(300),
+    addressNumber: optStr(20),
     physicalRef: optStr(300),
     speciesId: optId(),
     cultivar: optStr(120),
@@ -68,7 +70,7 @@ export async function saveTree(id: string | null, _: ActionState, fd: FormData):
   let code = "";
   const res = await runAction(async () => {
     const user = await assertPermission("trees:write");
-    const data = treeSchema.parse(formObject(fd, ["conflicts"]));
+    const data = splitAddress(treeSchema.parse(formObject(fd, ["conflicts"])), "addressNumber");
     await checkSector(data.propertyId, data.sectorId);
     if (id) {
       const t = await db.tree.update({ where: { id }, data });
@@ -88,13 +90,13 @@ export async function saveTree(id: string | null, _: ActionState, fd: FormData):
   return finish(res, `/arvores/${code}`);
 }
 
-const locationSchema = z.object({ ...location, address: optStr(300), physicalRef: optStr(300) }).refine(latLngPair, pairMsg);
+const locationSchema = z.object({ ...location, address: optStr(300), addressNumber: optStr(20), physicalRef: optStr(300) }).refine(latLngPair, pairMsg);
 
 export async function saveTreeLocation(id: string, _: ActionState, fd: FormData): Promise<ActionState> {
   let code = "";
   const res = await runAction(async () => {
     const user = await assertPermission("trees:write");
-    const data = locationSchema.parse(formObject(fd));
+    const data = splitAddress(locationSchema.parse(formObject(fd)), "addressNumber");
     if (data.latitude === null) throw new UserError("Capture ou informe as coordenadas.");
     const t = await db.tree.update({ where: { id }, data });
     code = t.code;

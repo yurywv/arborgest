@@ -12,7 +12,7 @@ import * as blob from "@vercel/blob";
 type Driver = "local" | "s3" | "vercel-blob";
 export const driver = (): Driver =>
   (process.env.STORAGE_DRIVER || (process.env.BLOB_READ_WRITE_TOKEN ? "vercel-blob" : "local")) as Driver;
-const blobAccess = () => (process.env.BLOB_ACCESS === "public" ? "public" : "private") as "public" | "private";
+export const blobAccess = () => (process.env.BLOB_ACCESS === "public" ? "public" : "private") as "public" | "private";
 const KEY_RE = /^[a-z0-9][a-z0-9/_.-]{2,200}$/i;
 
 export function assertSafeKey(key: string) {

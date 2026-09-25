@@ -116,3 +116,33 @@ describe("Margem de lucro do orçamento", () => {
     expect(() => assertNonNegativeMargin(dec("-0.00001"), "Arredondamento")).not.toThrow(); // tolerância de centavos
   });
 });
+
+describe("Comissão", () => {
+  const items = [{ calculatedPrice: dec(10000), negotiatedPrice: dec(10000), cost: dec(5000) }];
+  // receita 10.000; impostos 11% = 1.100; lucro = 10.000 − 1.100 − 5.000 = 3.900
+  it("sobre o valor total da proposta", () => {
+    const t = estimateTotals({ items, tax: dec(0.11), commission: { percent: dec(0.05), base: "TOTAL" } });
+    expect(t.commission.toNumber()).toBe(500);
+    expect(t.resultAfterCommission.toNumber()).toBe(3400);
+    expect(t.marginAfterCommission.toNumber()).toBeCloseTo(3400 / 8900, 10);
+    expect(t.negotiatedTotal.toNumber()).toBe(10000); // preço não muda
+  });
+  it("sobre a margem de lucro, excluídos os impostos", () => {
+    const t = estimateTotals({ items, tax: dec(0.11), commission: { percent: dec(0.1), base: "PROFIT" } });
+    expect(t.profit.toNumber()).toBe(3900);
+    expect(t.commission.toNumber()).toBe(390);
+    expect(t.resultAfterCommission.toNumber()).toBe(3510);
+  });
+  it("sobre lucro negativo não gera comissão; percentual negativo ou ≥ 100% é rejeitado", () => {
+    const loss = [{ calculatedPrice: dec(1000), negotiatedPrice: dec(1000), cost: dec(2000) }];
+    expect(estimateTotals({ items: loss, tax: dec(0), commission: { percent: dec(0.1), base: "PROFIT" } }).commission.toNumber()).toBe(0);
+    expect(() => estimateTotals({ items, tax: dec(0), commission: { percent: dec(-0.01), base: "TOTAL" } })).toThrow(/negativa/);
+    expect(() => estimateTotals({ items, tax: dec(0), commission: { percent: dec(1), base: "TOTAL" } })).toThrow(/100%/);
+  });
+  it("comissão alta sobre o total pode levar a margem após comissão abaixo das alçadas (ou negativa)", () => {
+    const t = estimateTotals({ items, tax: dec(0.11), commission: { percent: dec(0.5), base: "TOTAL" } });
+    expect(t.marginAfterCommission.lt(0)).toBe(true);
+    expect(() => assertNonNegativeMargin(t.marginAfterCommission, "Esta comissão")).toThrow(/margem negativa/);
+    expect(requiredApprovalLevel(estimateTotals({ items, tax: dec(0.11), commission: { percent: dec(0.1), base: "TOTAL" } }).marginAfterCommission, P.approval)).toBe("GERENCIAL");
+  });
+});

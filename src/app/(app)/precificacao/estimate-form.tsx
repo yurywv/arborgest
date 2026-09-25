@@ -17,25 +17,24 @@ export function EstimateForm({ estimate, clients, properties, contacts, opportun
   const e: Partial<PricingEstimate> = estimate ?? {};
   const [clientId, setClientId] = useState(e.clientId ?? defaults?.clientId ?? "");
   const of = (l: Linked[]) => l.filter((x) => x.clientId === clientId);
-  const validDefault = e.validUntil ?? new Date(Date.now() + 30 * 86_400_000);
   return (
     <ActionForm action={estimate ? updateEstimateHeader.bind(null, estimate.id) : createEstimate} className="space-y-4">
       <FormSection title="Cliente e vínculos" description="Cliente → propriedade → oportunidade. A propriedade habilita a seleção direta de árvores.">
-        <Field name="title" label="Título" defaultValue={e.title ?? defaults?.title} placeholder="Ex.: Manejo arbóreo 2026 — áreas comuns" wrapClassName="sm:col-span-2" />
+        <Field name="title" label="Título" defaultValue={e.title} wrapClassName="sm:col-span-2" />
         <SelectField name="clientId" label="Cliente" required options={clients} defaultValue={clientId} onChange={(ev) => setClientId(ev.target.value)} wrapClassName="sm:col-span-2" />
         <SelectField key={`p-${clientId}`} name="propertyId" label="Propriedade" options={of(properties)} defaultValue={e.propertyId ?? defaults?.propertyId} placeholder={clientId ? "Sem propriedade específica" : "Selecione o cliente"} disabled={!clientId} />
         <SelectField key={`c-${clientId}`} name="contactId" label="Contato" options={of(contacts)} defaultValue={e.contactId ?? defaults?.contactId} placeholder={clientId ? "—" : "Selecione o cliente"} disabled={!clientId} />
         <SelectField key={`o-${clientId}`} name="opportunityId" label="Oportunidade" options={of(opportunities)} defaultValue={e.opportunityId ?? defaults?.opportunityId} placeholder={clientId ? "Sem oportunidade" : "Selecione o cliente"} disabled={!clientId} />
-        <Field name="validUntil" label="Validade" type="date" defaultValue={toInputDate(validDefault)} />
+        <Field name="validUntil" label="Validade" type="date" defaultValue={e.validUntil ? toInputDate(e.validUntil) : undefined} hint="Em branco: 30 dias a partir da criação." />
       </FormSection>
       {margin && !estimate && (
         <FormSection title="Margem de lucro" description="Aplicada a todos os serviços deste orçamento e das propostas emitidas a partir dele.">
-          <Field name="marginPercent" label="Margem de lucro (%)" inputMode="decimal" placeholder={margin.defaultPct} suffix="%"
+          <Field name="marginPercent" label="Margem de lucro (%)" inputMode="decimal" suffix="%"
             hint={`Em branco = margem padrão (${margin.defaultPct}%). Não pode ser negativa; sempre menor que 100%. Margem sobre o preço de venda.`} />
         </FormSection>
       )}
       <FormSection title="Responsáveis">
-        <SelectField name="commercialOwnerId" label="Responsável comercial" options={users} defaultValue={e.commercialOwnerId} placeholder="Eu mesmo" />
+        <SelectField name="commercialOwnerId" label="Responsável comercial" options={users} defaultValue={e.commercialOwnerId} placeholder="—" />
         <SelectField name="technicalOwnerId" label="Responsável técnico" options={users} defaultValue={e.technicalOwnerId} placeholder="—" />
       </FormSection>
       <FormSection title="Observações">

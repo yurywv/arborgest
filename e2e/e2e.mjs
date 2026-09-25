@@ -55,11 +55,15 @@ try {
   check("validação de formulário (obrigatório + CNPJ)", true);
   await fill("Razão social / nome", `Condomínio Teste E2E ${stamp}`);
   await fill("CPF/CNPJ", "");
+  await fill("Logradouro", "Rua das Acácias, 250");
   await fill("Cidade", "Campinas");
   await select("Estado", "SP");
   await save();
   await page.waitForURL(/\/clientes\/c[a-z0-9]+$/); await ready();
   const clientUrl = page.url();
+  await go(`${clientUrl}/editar`);
+  check("número do endereço separado do logradouro", (await lbl("Logradouro").inputValue()) === "Rua das Acácias" && (await lbl("Número").inputValue()) === "250");
+  await go(clientUrl);
   check("cliente criado", (await page.getByRole("heading", { level: 1 }).textContent())?.includes("Teste E2E") ?? false);
 
   // 2b. Vários contatos classificados

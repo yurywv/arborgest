@@ -81,6 +81,7 @@ export default async function PricingPage({ searchParams }: { searchParams: Prom
           <Kpi label="Conversão" value={ind.conversion === null ? "—" : fmtPct(ind.conversion)} hint={`${ind.acceptedCount} aceitas · ${ind.rejectedCount} recusadas`} />
           {costs ? <Kpi label="Margem média" value={ind.avgMargin === null ? "—" : fmtPct(ind.avgMargin)} hint={`Descontos: ${fmtBRL(ind.discounts)}`} />
             : <Kpi label="Descontos concedidos" value={fmtBRL(ind.discounts)} />}
+          {costs && ind.commissions > 0 && <Kpi label="Comissões" value={fmtBRL(ind.commissions)} hint="Orçamentos do mês" />}
         </div>
         {(ind.byService.length > 0 || ind.byClient.length > 0) && (
           <div className="mt-3 grid gap-3 md:grid-cols-2">
@@ -99,7 +100,7 @@ export default async function PricingPage({ searchParams }: { searchParams: Prom
       </section>
 
       <FilterForm>
-        <SearchBox defaultValue={q} placeholder="Número, título, cliente ou propriedade" />
+        <SearchBox defaultValue={q} />
         <FilterSelect name="status" label="Status" options={Object.entries(ESTIMATE_STATUS).map(([value, label]) => ({ value, label }))} value={status} />
         <FilterSelect name="servico" label="Serviço" options={Object.values(SERVICES).map((s) => ({ value: s.code, label: s.shortName }))} value={service} />
         <FilterSelect name="cliente" label="Cliente" options={clients} value={clientId} />
@@ -126,7 +127,7 @@ export default async function PricingPage({ searchParams }: { searchParams: Prom
               <td className="whitespace-nowrap">{fmtDate(e.date)}</td>
               <td><Badge tone={ESTIMATE_STATUS_TONE[e.status]}>{ESTIMATE_STATUS[e.status]}</Badge></td>
               <td className="text-right font-semibold whitespace-nowrap tabular-nums">{fmtBRL(e.negotiatedTotal.toString())}</td>
-              {costs && <td className="text-right tabular-nums">{e.effectiveMargin === null ? "—" : fmtPct(e.effectiveMargin.toString())}</td>}
+              {costs && <td className="text-right tabular-nums">{(e.marginAfterCommission ?? e.effectiveMargin) === null ? "—" : fmtPct((e.marginAfterCommission ?? e.effectiveMargin)!.toString())}</td>}
             </tr>
           ))}
         </ResponsiveTable>

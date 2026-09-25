@@ -20,11 +20,11 @@ export function FilterForm({ children, action }: { children: React.ReactNode; ac
   );
 }
 
-export function SearchBox({ defaultValue, placeholder = "Buscar…" }: { defaultValue?: string; placeholder?: string }) {
+export function SearchBox({ defaultValue, label = "Buscar" }: { defaultValue?: string; label?: string }) {
   return (
     <div className="relative min-w-48 flex-1">
       <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-stone-400" />
-      <input name="q" type="search" defaultValue={defaultValue} placeholder={placeholder} className="input min-h-10 pl-9" />
+      <input name="q" type="search" defaultValue={defaultValue} className="input min-h-10 pl-9" aria-label={label} autoComplete="off" />
     </div>
   );
 }

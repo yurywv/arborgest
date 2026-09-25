@@ -4,7 +4,8 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { hasPermission } from "@/lib/auth/permissions";
 import { EngineError } from "@/lib/pricing/engine";
 import { isServiceCode } from "@/lib/pricing/registry";
-import { getActiveVersion, getVersion, serverCalculate } from "@/lib/pricing/server";
+import { getActiveVersion, getVersion, pricingAudit, serverCalculate } from "@/lib/pricing/server";
+import { db } from "@/lib/db";
 
 export const runtime = "nodejs";
 
@@ -24,6 +25,9 @@ export async function POST(req: Request) {
   try {
     const version = parsed.data.parameterVersionId ? await getVersion(parsed.data.parameterVersionId) : await getActiveVersion();
     const { inputs, result } = serverCalculate(version, parsed.data.service, parsed.data.inputs);
+    await pricingAudit(db, user.id, "CALCULO_API", "PricingCalculation", null, {
+      field: `${parsed.data.service} · parâmetros v${version.label}`, newValue: { entradas: inputs, preco: result.finalPriceRounded },
+    });
     const full = hasPermission(user.permissions, "pricing:costs");
     return NextResponse.json({
       parameterVersion: version.label,

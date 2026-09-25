@@ -23,7 +23,8 @@ function TreeChecklist({ trees, selected, onChange }: { trees: TreeOption[]; sel
           <button type="button" className="btn btn-ghost btn-sm" onClick={() => onChange([])}>Limpar</button>
         </div>
       </div>
-      <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Filtrar por código, espécie…" className="input mb-2" />
+      <label className="mb-2 block"><span className="mb-0.5 block text-[11px] font-medium text-stone-500">Filtrar árvores (código, espécie ou setor)</span>
+        <input value={q} onChange={(e) => setQ(e.target.value)} className="input" autoComplete="off" /></label>
       <div className="max-h-72 space-y-1 overflow-y-auto rounded-xl border border-stone-200 p-2">
         {trees.length === 0 && <p className="p-2 text-sm text-stone-500">Selecione o cliente/propriedade para listar as árvores.</p>}
         {shown.map((t) => (
