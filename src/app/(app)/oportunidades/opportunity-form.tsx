@@ -7,10 +7,14 @@ import { saveOpportunity } from "./actions";
 
 type Opp = Omit<Opportunity, "estimatedValue"> & { estimatedValue: number | null };
 
-export function OpportunityForm({ opp, clients, users, clientId }: { opp?: Opp; clients: Option[]; users: Option[]; clientId?: string }) {
+export function OpportunityForm({ opp, clients, users, clientId, basis }: {
+  opp?: Opp; clients: Option[]; users: Option[]; clientId?: string; basis?: { inspectionIds: string[]; riskIds: string[] };
+}) {
   const o: Partial<Opp> = opp ?? {};
   return (
     <ActionForm action={saveOpportunity.bind(null, opp?.id ?? null)} className="space-y-4">
+      {basis?.inspectionIds.map((x) => <input key={x} type="hidden" name="basisInspectionIds" value={x} />)}
+      {basis?.riskIds.map((x) => <input key={x} type="hidden" name="basisRiskIds" value={x} />)}
       <FormSection title="Oportunidade">
         <SelectField name="clientId" label="Cliente" required options={clients} defaultValue={o.clientId ?? clientId} wrapClassName="sm:col-span-2" />
         <Field name="description" label="Descrição" required defaultValue={o.description} wrapClassName="sm:col-span-2" />

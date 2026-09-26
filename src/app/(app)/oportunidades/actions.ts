@@ -27,9 +27,21 @@ export async function saveOpportunity(id: string | null, _: ActionState, fd: For
   let savedId = id;
   const res = await runAction(async () => {
     const user = await assertPermission("opportunities:write");
-    const d = schema.parse(formObject(fd));
+    const f = formObject(fd, ["basisInspectionIds", "basisRiskIds"]);
+    const d = schema.parse(f);
     const data = { ...d, probability: d.probability ?? STAGE_DEFAULT_PROBABILITY[d.stage] };
-    const o = id ? await db.opportunity.update({ where: { id }, data }) : await db.opportunity.create({ data });
+    // Oportunidade criada a partir de uma inspeção/avaliação de risco: já nasce com a base técnica (do mesmo cliente).
+    const basisIds = z.array(z.string().max(40)).max(50);
+    const bi = id ? [] : basisIds.parse(f.basisInspectionIds ?? []);
+    const br = id ? [] : basisIds.parse(f.basisRiskIds ?? []);
+    const tree = { property: { clientId: d.clientId } };
+    const [okI, okR] = await Promise.all([
+      db.inspection.findMany({ where: { id: { in: bi }, tree }, select: { id: true } }),
+      db.riskAssessment.findMany({ where: { id: { in: br }, tree }, select: { id: true } }),
+    ]);
+    if (okI.length !== bi.length || okR.length !== br.length) throw new UserError("A inspeção/avaliação de risco é de uma árvore de outro cliente.");
+    const o = id ? await db.opportunity.update({ where: { id }, data })
+      : await db.opportunity.create({ data: { ...data, inspections: { connect: okI }, riskAssessments: { connect: okR } } });
     savedId = o.id;
     await audit(user.id, id ? "UPDATE" : "CREATE", "Opportunity", o.id, o.description);
   });

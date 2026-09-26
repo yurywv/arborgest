@@ -64,6 +64,10 @@ export const paramsSchema = z
       cacamba: money("Custo caçamba"),
       horasDia: num("Horas por dia", { gt: 0, lte: 24 }),
       supervisaoDia: money("Diária do acompanhamento técnico"),
+      urgencia: z.object({
+        BAIXA: fraction("Acréscimo por urgência baixa"), MEDIA: fraction("Acréscimo por urgência média"),
+        ALTA: fraction("Acréscimo por urgência alta"), URGENTE: fraction("Acréscimo por urgência urgente"),
+      }).optional(),
     }),
     rules: z.object({
       podaPriceMethod: z.enum(["LEGACY", "STANDARD"]),

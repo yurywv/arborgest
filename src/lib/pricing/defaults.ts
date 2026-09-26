@@ -87,6 +87,7 @@ export function toPureLegacy(p: PricingParams): PricingParams {
 export function normalizeParams(raw: PricingParams): PricingParams {
   const p = structuredClone(raw);
   p.general.supervisaoDia ??= p.general.tecnicoDia;
+  p.general.urgencia ??= { BAIXA: "0", MEDIA: "0", ALTA: "0", URGENTE: "0" };
   p.services.SUPRESSAO.frete ??= { tarifaTonKm: "0", valorMinimo: "0", pesoPorMudaKg: "0" };
   return p;
 }

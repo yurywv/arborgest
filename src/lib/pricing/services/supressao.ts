@@ -13,7 +13,7 @@
  *  preço = operacional ÷ (1 − margem) ÷ (1 − imposto)
  */
 import {
-  Calc, EngineError, buildResult, cacambaBlock, commonBlock, derived, licenseTier, modifiersBlock, priceBlock, supervisionBlock,
+  Calc, EngineError, buildResult, cacambaBlock, commonBlock, derived, licenseTier, modifiersBlock, priceBlock, supervisionBlock, urgencyBlock,
 } from "../engine";
 import { D, dec, fmtBRL, fmtN } from "../decimal";
 import type { CalcResult, Difficulty, PricingParams, SupressaoInputs } from "../types";
@@ -86,11 +86,12 @@ export function calcSupressao(p: PricingParams, inp: SupressaoInputs): CalcResul
        : "Técnico + auxiliares + deslocamento + alimentação + hospedagem + combustível", "TOTAL");
   const afterModifiers = calc.add("aposModificadores", "Valor após modificadores", baseCost.mul(mods.factor),
     `${fmtBRL(baseCost)} × ${fmtN(mods.factor)}`, "TOTAL");
-  let operational = cac.cost.plus(c.rateio).plus(licenca).plus(afterModifiers).plus(sup.total).plus(frete);
-  if (!v1) operational = operational.plus(compensacao);
-  calc.add("custoOperacional", "Custo operacional", operational,
+  let baseOperational = cac.cost.plus(c.rateio).plus(licenca).plus(afterModifiers).plus(sup.total).plus(frete);
+  if (!v1) baseOperational = baseOperational.plus(compensacao);
+  calc.add("custoOperacional", "Custo operacional", baseOperational,
     `Caçamba + rateio fixo + licenciamento + valor após modificadores${v1 ? "" : " + compensação"}` +
       `${sup.total.isZero() ? "" : " + acompanhamento técnico"}${frete.isZero() ? "" : " + frete"}`, "TOTAL");
+  const operational = urgencyBlock(p, inp.urgency, baseOperational, calc);
 
   const price = priceBlock(p, operational, inp.trees, calc, "STANDARD");
   return buildResult({
@@ -98,7 +99,7 @@ export function calcSupressao(p: PricingParams, inp: SupressaoInputs): CalcResul
     costs: {
       tecnico: c.tecnico, auxiliares: c.auxiliares, deslocamento: c.deslocamento, alimentacao: c.alimentacao,
       hospedagem: c.hospedagem, combustivel, cacamba: cac.cost, licenca, compensacao, rateioFixo: c.rateio,
-      supervisao: sup.total, frete,
+      supervisao: sup.total, frete, urgencia: operational.minus(baseOperational),
     },
     baseCost, mods, afterModifiers, operational, price, method: "STANDARD", auxiliaries: inp.auxiliaries,
     details: {

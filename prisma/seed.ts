@@ -532,6 +532,17 @@ async function main() {
     clientId: c3.id, propertyId: props[3].id, title: "Poda de limpeza — Praça Central", status: "RASCUNHO", ago: 1, owner: gestor, techId: tecnico.id,
     items: [{ service: "PODA", description: "Poda de limpeza", inputs: { trees: 12, distanceKm: 25, difficulty: 1, auxiliaries: 2, lodging: false, toll: 0, serviceType: 2, license: true, cacamba: true, fuelLiters: 8, modifiers: [] } }],
   });
+  // Base técnica: avaliações de risco e inspeções da Planta Hortolândia na oportunidade e no orçamento em negociação.
+  const hortTrees = { tree: { propertyId: props[1].id } };
+  const [hortRisks, hortInsp] = await Promise.all([
+    db.riskAssessment.findMany({ where: hortTrees, select: { id: true }, orderBy: { assessedAt: "desc" }, take: 6 }),
+    db.inspection.findMany({ where: hortTrees, select: { id: true }, orderBy: { inspectedAt: "desc" }, take: 6 }),
+  ]);
+  const basisLinks = { inspections: { connect: hortInsp }, riskAssessments: { connect: hortRisks } };
+  await db.opportunity.update({ where: { id: oppAmp.id }, data: basisLinks });
+  const estHort = await db.pricingEstimate.findFirst({ where: { propertyId: props[1].id, status: "EM_NEGOCIACAO" } });
+  if (estHort) await db.pricingEstimate.update({ where: { id: estHort.id }, data: basisLinks });
+
   // Proposta emitida em Contratos (aditivo do contrato da planta industrial), enviada ao cliente.
   const ct2 = await db.contract.findUniqueOrThrow({ where: { number: "CT-2026-0002" } });
   await db.commercialProposal.create({

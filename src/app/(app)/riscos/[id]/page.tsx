@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Pencil, Trash2 } from "lucide-react";
+import { Pencil, Trash2, Target } from "lucide-react";
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/auth/session";
 import { hasPermission } from "@/lib/auth/permissions";
@@ -28,6 +28,7 @@ export default async function RiskDetail({ params }: { params: Promise<{ id: str
         title={`Avaliação de risco — ${fmtDate(r.assessedAt)}`}
         subtitle={<>{r.tree.code} · {r.tree.species?.popularName ?? "—"} · {r.tree.property.name}</>}
         actions={<>
+          {can("opportunities:write") && <LinkButton href={`/oportunidades/nova?clientId=${r.tree.property.clientId}&risco=${id}`} icon={Target}>Nova oportunidade</LinkButton>}
           {can("risk:write") && <LinkButton href={`/riscos/${id}/editar`} icon={Pencil}>Editar</LinkButton>}
           {can("risk:delete") && <ActionButton action={deleteRisk.bind(null, id)} confirm="Excluir esta avaliação?" variant="danger-ghost" redirectTo="/riscos"><Trash2 className="size-4" /></ActionButton>}
         </>}

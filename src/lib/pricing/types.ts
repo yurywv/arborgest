@@ -41,7 +41,13 @@ export interface GeneralParams {
   horasDia: Dec;
   /** Custo diário do profissional de acompanhamento técnico (poda/supressão). */
   supervisaoDia: Dec;
+  /** Acréscimo por urgência (fração sobre o custo operacional), por nível. Ausente = 0. */
+  urgencia?: Record<UrgencyLevel, Dec>;
 }
+
+export type UrgencyLevel = "BAIXA" | "MEDIA" | "ALTA" | "URGENTE";
+export const URGENCY_LEVELS: UrgencyLevel[] = ["BAIXA", "MEDIA", "ALTA", "URGENTE"];
+export const URGENCY_LEVEL_LABEL: Record<UrgencyLevel, string> = { BAIXA: "Baixa", MEDIA: "Média", ALTA: "Alta", URGENTE: "Urgente" };
 
 export interface RuleParams {
   podaPriceMethod: PodaPriceMethod;
@@ -123,6 +129,8 @@ export interface BaseInputs {
   /** Valores regionais (null/ausente = padrão dos parâmetros). */
   mealCost?: number | null; // alimentação por pessoa/dia
   lodgingCost?: number | null; // hospedagem por pessoa/dia
+  /** Urgência da intervenção (base técnica: risco/condição). null = não informada (sem acréscimo). */
+  urgency?: UrgencyLevel | null;
 }
 export type InventarioInputs = BaseInputs;
 
@@ -168,6 +176,7 @@ export interface GeneralInputs {
   lodgingCost?: number | null;
   materials?: number | null; // insumos/materiais (R$)
   thirdParty?: number | null; // serviços de terceiros, taxas e emolumentos (R$)
+  urgency?: UrgencyLevel | null;
 }
 export type ServiceInputs = InventarioInputs | SupressaoInputs | PodaInputs | GeneralInputs;
 

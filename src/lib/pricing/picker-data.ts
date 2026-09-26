@@ -8,7 +8,8 @@ import type { ServiceCode } from "./types";
 /** Árvores ativas da propriedade (ou do cliente) para seleção no item do orçamento. */
 export async function pickerTrees(where: { propertyId?: string | null; clientId: string }): Promise<PickerTree[]> {
   const rows = await db.tree.findMany({
-    where: { status: "ATIVA", ...(where.propertyId ? { propertyId: where.propertyId } : { property: { clientId: where.clientId } }) },
+    // Ativas e mortas (a remoção de árvore morta também é precificada).
+    where: { status: { in: ["ATIVA", "MORTA"] }, ...(where.propertyId ? { propertyId: where.propertyId } : { property: { clientId: where.clientId } }) },
     orderBy: { code: "asc" },
     take: 20_000,
     select: {

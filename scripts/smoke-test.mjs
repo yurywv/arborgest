@@ -28,7 +28,7 @@ const pages = [
   "/dashboard", "/clientes", "/clientes/novo", `/clientes/${client.id}`, `/clientes/${client.id}?aba=propriedades`, `/clientes/${client.id}?aba=documentos`, `/clientes/${client.id}/editar`,
   "/contatos", "/contatos/novo", `/contatos/${contact.id}/editar`, "/oportunidades", "/oportunidades/nova", `/oportunidades/${opp.id}`, `/oportunidades/${opp.id}/editar`, "/propriedades?identificacao=PUBLICA",
   "/contratos", "/contratos/novo", `/contratos/${contract.id}`, `/contratos/${contract.id}/editar`, `/contratos/${contract.id}/propostas/nova`,
-  `/contratos/${ctProposal.contractId}/propostas/${ctProposal.id}`, `/contratos/${ctProposal.contractId}/propostas/nova?de=${ctProposal.id}`, `/clientes/${client.id}?aba=historico`, `/emails/novo?cliente=${client.id}`, `/emails/novo?contato=${contact.id}`, `/clientes/${client.id}?aba=contratos`,
+  `/contratos/${ctProposal.contractId}/propostas/${ctProposal.id}`, `/contratos/${ctProposal.contractId}/propostas/nova?de=${ctProposal.id}`, `/clientes/${client.id}?aba=historico`, `/emails/novo?cliente=${client.id}`, `/oportunidades/nova?clientId=${client.id}&risco=${risk.id}`, `/oportunidades/nova?clientId=${client.id}&inspecao=${insp.id}`, `/emails/novo?contato=${contact.id}`, `/clientes/${client.id}?aba=contratos`,
   "/propriedades", "/propriedades/nova", `/propriedades/${property.id}`, `/propriedades/${property.id}?aba=setores`, `/propriedades/${property.id}?aba=arvores`, `/propriedades/${property.id}/editar`, `/propriedades/${property.id}/setores/${sector.id}`,
   "/arvores", "/arvores?inspecao=vencida", "/arvores?pendente=sim&risco=ALTO", "/arvores/novo", "/arvores/etiquetas", `/arvores/${tree.code}`,
   ...["localizacao", "botanica", "biometria", "raizes", "tronco", "copa", "fitossanidade", "riscos", "inspecoes", "intervencoes", "fotos", "documentos", "historico"].map((a) => `/arvores/${tree.code}?aba=${a}`),
@@ -43,7 +43,7 @@ const pages = [
   "/admin/usuarios", "/admin/usuarios/novo", `/admin/usuarios/${user.id}`, "/admin/equipes", "/admin/equipes/nova", `/admin/equipes/${team.id}`,
   "/admin/perfis", "/admin/perfis/novo", `/admin/perfis/${role.id}`, "/admin/configuracoes",
   "/precificacao", "/precificacao?pendentes=1", "/precificacao/novo", `/precificacao/novo?oportunidade=${opp.id}`, `/precificacao/novo?propriedade=${property.id}`,
-  "/precificacao/simulador", `/precificacao/${est.id}`, ...["proposta", "historico", "dados"].map((a) => `/precificacao/${est.id}?aba=${a}`),
+  "/precificacao/simulador", `/precificacao/${est.id}`, ...["base", "proposta", "historico", "dados"].map((a) => `/precificacao/${est.id}?aba=${a}`), `/precificacao/${est.id}/item?servico=PODA&urgencia=ALTA`,
   `/precificacao/${draft.id}/item`, `/precificacao/${draft.id}/item?item=${draft.items[0].id}`, `/precificacao/${draft.id}?aba=dados`, `/precificacao/calculos/${calc.id}`,
   `/clientes/${est.clientId}?aba=orcamentos`, "/admin/precificacao", ...["versoes", "compensacao", "servicos", "auditoria"].map((a) => `/admin/precificacao?aba=${a}`),
   "/admin/precificacao/validacao", `/api/propostas/${est.proposals[0].id}/pdf`, `/api/propostas/${ctProposal.id}/pdf`, "/busca?q=2026-0000",
@@ -92,7 +92,7 @@ console.log("ANÔNIMO: bloqueios verificados");
 
 // 3) Permissões por perfil
 const expectations = {
-  "consulta@arborgest.demo": { allow: ["/dashboard", "/arvores", `/arvores/${tree.code}`, "/mapa", "/relatorios"], deny: [`/emails/novo?cliente=${client.id}`, "/arvores/novo", "/clientes/novo", "/admin/usuarios", "/admin/perfis", "/inspecoes/nova", "/admin/configuracoes", "/precificacao/novo", "/admin/precificacao"], apiDeny: ["/api/relatorios/inventario?format=csv"] },
+  "consulta@arborgest.demo": { allow: ["/dashboard", "/arvores", `/arvores/${tree.code}`, "/mapa", "/relatorios"], deny: [`/emails/novo?cliente=${client.id}`, `/oportunidades/nova?clientId=${client.id}&risco=${risk.id}`, `/oportunidades/nova?clientId=${client.id}&inspecao=${insp.id}`, "/arvores/novo", "/clientes/novo", "/admin/usuarios", "/admin/perfis", "/inspecoes/nova", "/admin/configuracoes", "/precificacao/novo", "/admin/precificacao"], apiDeny: ["/api/relatorios/inventario?format=csv"] },
   "tecnico@arborgest.demo": { allow: ["/arvores/novo", "/inspecoes/nova", "/riscos/nova", "/intervencoes/nova", "/precificacao/novo", "/precificacao/simulador"], deny: ["/clientes/novo", "/contratos/novo", "/admin/usuarios", "/admin/perfis", "/admin/precificacao"] },
   "comercial@arborgest.demo": { allow: ["/clientes/novo", "/oportunidades/nova", "/contratos/novo", "/precificacao", "/precificacao/novo"], deny: ["/inspecoes/nova", "/arvores/novo", "/admin/perfis", "/admin/precificacao"] },
   "operacional@arborgest.demo": { allow: ["/ordens-servico/nova", "/intervencoes/nova"], deny: ["/oportunidades", "/contratos", "/arvores/novo", "/admin/usuarios", "/precificacao"], apiDeny: [`/api/propostas/${est.proposals[0].id}/pdf`, `/api/propostas/${ctProposal.id}/pdf`] },

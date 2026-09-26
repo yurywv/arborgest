@@ -125,6 +125,18 @@ export async function createEstimate(_: ActionState, fd: FormData): Promise<Acti
         },
       });
       id = e.id;
+      // Base técnica da oportunidade (inspeções/avaliações de risco) passa para o orçamento — só as da propriedade, se houver.
+      if (d.opportunityId) {
+        const treeWhere = { property: { clientId: d.clientId, ...(d.propertyId && { id: d.propertyId }) } };
+        const [ins, rks] = await Promise.all([
+          tx.inspection.findMany({ where: { opportunities: { some: { id: d.opportunityId } }, tree: treeWhere }, select: { id: true } }),
+          tx.riskAssessment.findMany({ where: { opportunities: { some: { id: d.opportunityId } }, tree: treeWhere }, select: { id: true } }),
+        ]);
+        if (ins.length || rks.length) {
+          await tx.pricingEstimate.update({ where: { id: e.id }, data: { inspections: { connect: ins }, riskAssessments: { connect: rks } } });
+          await pricingAudit(tx, user.id, "BASE_TECNICA", "PricingEstimate", e.id, { estimateId: e.id, field: "baseTecnica", newValue: `${ins.length} inspeção(ões) e ${rks.length} avaliação(ões) de risco da oportunidade` });
+        }
+      }
       if (margin) await pricingAudit(tx, user.id, "ALTERACAO_MARGEM", "PricingEstimate", e.id, { estimateId: e.id, field: "margemOrcamento", previousValue: paramsOf(version).general.margem, newValue: margin.toString(), justification: "Definida na criação" });
       await pricingAudit(tx, user.id, "CRIACAO", "PricingEstimate", e.id, { estimateId: e.id, newValue: { number, versao: version.label } });
     });

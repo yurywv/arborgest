@@ -25,6 +25,7 @@ export const OVERRIDE_TYPE: Record<string, string> = {
   DESCONTO_PERCENTUAL: "Desconto (%)", DESCONTO_VALOR: "Desconto (R$)", REMOCAO: "Desconto removido",
 };
 export const AUDIT_ACTION: Record<string, string> = {
+  BASE_TECNICA: "Base técnica (inspeções/riscos)",
   CRIACAO: "Criação", ALTERACAO: "Alteração", ITEM_CRIADO: "Item incluído", ITEM_RECALCULADO: "Item recalculado", ITEM_REMOVIDO: "Item removido",
   ALTERACAO_MARGEM: "Alteração de margem", ALTERACAO_PRECO: "Mudança de preço", CUSTO_ADICIONAL: "Custo adicional", DESCONTO: "Desconto",
   SOLICITACAO_APROVACAO: "Aprovação solicitada", APROVACAO: "Aprovação", REPROVACAO: "Reprovação", APROVACAO_INVALIDADA: "Aprovação invalidada",

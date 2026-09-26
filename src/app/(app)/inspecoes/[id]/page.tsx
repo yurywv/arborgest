@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Pencil, Trash2, Wrench } from "lucide-react";
+import { Pencil, Trash2, Wrench, Target } from "lucide-react";
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/auth/session";
 import { hasPermission } from "@/lib/auth/permissions";
@@ -40,6 +40,7 @@ export default async function InspectionDetail({ params, searchParams }: { param
         subtitle={<>{i.tree.code} · {i.tree.species?.popularName ?? "—"} · {i.tree.property.name}</>}
         actions={
           <>
+            {can("opportunities:write") && <LinkButton href={`/oportunidades/nova?clientId=${i.tree.property.clientId}&inspecao=${id}`} icon={Target}>Nova oportunidade</LinkButton>}
             {can("interventions:write") && <LinkButton href={`/intervencoes/nova?arvore=${i.tree.code}`} icon={Wrench}>Intervenção</LinkButton>}
             {can("inspections:write") && <LinkButton href={`/inspecoes/${id}/editar`} icon={Pencil}>Corrigir</LinkButton>}
             {can("inspections:delete") && <ActionButton action={deleteInspection.bind(null, id)} confirm="Excluir esta inspeção do histórico?" variant="danger-ghost" redirectTo={`/arvores/${i.tree.code}?aba=inspecoes`}><Trash2 className="size-4" /></ActionButton>}

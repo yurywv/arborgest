@@ -10,6 +10,7 @@ import { ESTIMATE_STATUS, ESTIMATE_STATUS_TONE } from "@/lib/pricing/labels";
 import { Badge, Card, DataList, LinkButton, PageHeader } from "@/components/ui";
 import { ActionButton } from "@/components/form";
 import { ActivityForm } from "./activity-form";
+import { AssessmentBasis } from "@/components/assessment-basis";
 import { deleteOpportunity, deleteOpportunityActivity } from "../actions";
 
 export const metadata = { title: "Oportunidade" };
@@ -45,6 +46,7 @@ export default async function OpportunityDetail({ params }: { params: Promise<{ 
       />
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">
+          <AssessmentBasis target="opportunity" id={id} clientId={o.clientId} canWrite={canWrite} />
           <Card title="Log de ações junto ao cliente">
             {canWrite && <div className="mb-4 rounded-xl border border-dashed border-stone-300 bg-stone-50 p-3"><ActivityForm opportunityId={id} contacts={contacts.map((c) => ({ value: c.id, label: c.name }))} /></div>}
             {o.activities.length === 0 ? <p className="py-4 text-sm text-stone-500">Nenhuma ação registrada.</p> : (

@@ -169,3 +169,21 @@ Manutenção periódica, Plantio, Poda, Remoção / supressão e Tratamento fito
   A quantidade usa a unidade do serviço (árvore, muda, visita, processo, serviço); só os serviços por árvore permitem vincular exemplares.
 - O código interno da supressão continua `SUPRESSAO` (orçamentos antigos inalterados); o nome exibido passa a "Remoção / supressão".
 - "Laudo técnico" foi incorporado a "Avaliação de risco" (migração atualiza oportunidades e OS existentes).
+
+## Base técnica: inspeções e avaliações de risco (set/2026)
+Oportunidades e orçamentos podem ter **várias** inspeções e avaliações de risco vinculadas (aba *Base técnica* do orçamento;
+card na página da oportunidade). A partir de uma inspeção ou avaliação é possível abrir **Nova oportunidade** já vinculada,
+e o orçamento criado a partir de uma oportunidade herda os vínculos (só os da propriedade do orçamento, se houver).
+
+**Plano de intervenções** (`src/lib/assessment-basis.ts`), por exemplar, com a inspeção e a avaliação mais recentes vinculadas:
+- Urgência = a maior entre risco (Extremo → Urgente · Alto → Alta · Moderado → Média · Baixo → Baixa),
+  condição geral (Crítica → Urgente · Ruim → Alta · Regular → Média · Boa/Ótima → Baixa) e a prioridade registrada na inspeção.
+- Alcance: risco Extremo, condição Crítica ou árvore morta → Remoção/supressão; risco Alto/Moderado ou condição Ruim/Regular → Poda;
+  fitossanidade Ruim/Crítica ou severidade Alta → + Tratamento fitossanitário; demais → monitorar. Árvores removidas,
+  transplantadas ou não localizadas ficam fora do plano.
+- Cada grupo (serviço × urgência) tem **Precificar**: abre o item com o serviço, as árvores e a urgência selecionados; os demais
+  campos continuam em branco.
+
+**Urgência no preço**: campo opcional *Urgência* em todos os serviços; o parâmetro *Acréscimo por urgência* (por nível, em
+Administração › Parâmetros de preço) incide sobre o custo operacional antes da margem e do imposto. Padrão 0% (sem acréscimo).
+Vincular/desvincular registros fica na auditoria da precificação (`BASE_TECNICA`).

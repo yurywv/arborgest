@@ -9,7 +9,7 @@ import type {
   BaseInputs, CalcComponent, CalcResult, CalcWarning, ComponentGroup, CoreServiceCode, Difficulty, EngineVersion, FieldOperationInputs, ModifierDef,
   PricingParams, ServiceCode,
 } from "./types";
-import { DIFFICULTY_LABEL } from "./types";
+import { DIFFICULTY_LABEL, URGENCY_LEVEL_LABEL, type UrgencyLevel } from "./types";
 
 export class EngineError extends Error {}
 
@@ -170,6 +170,20 @@ export function supervisionBlock(p: PricingParams, inp: FieldOperationInputs, ca
     dec(inp.distanceKm).mul(dec(p.general.custoKm)).plus(dec(inp.toll)).mul(d),
     `(${fmtN(inp.distanceKm)} km × ${fmtBRL(p.general.custoKm)} + pedágio ${fmtBRL(inp.toll)}) × ${dd}`);
   return { total: diaria.plus(alim).plus(hosp).plus(transp), days: d.toNumber() };
+}
+
+/**
+ * Acréscimo por urgência (parâmetro por nível, fração sobre o custo operacional). Entra no custo antes da margem e do imposto.
+ * Sem urgência informada (ou acréscimo 0) o custo não muda.
+ */
+export function urgencyBlock(p: PricingParams, urgency: UrgencyLevel | null | undefined, operational: DecimalT, calc: Calc) {
+  if (!urgency) return operational;
+  const pct = dec(p.general.urgencia?.[urgency] ?? "0");
+  if (pct.lt(0)) throw new EngineError("Acréscimo por urgência não pode ser negativo.");
+  const extra = calc.add("acrescimoUrgencia", "Acréscimo por urgência", operational.mul(pct),
+    `Urgência ${URGENCY_LEVEL_LABEL[urgency].toLowerCase()}: ${fmtBRL(operational)} × ${fmtPct(pct)}`);
+  if (extra.isZero()) return operational;
+  return calc.add("custoComUrgencia", "Custo operacional com urgência", operational.plus(extra), "Custo operacional + acréscimo por urgência", "TOTAL");
 }
 
 /** Produto dos modificadores ligados. No motor v1 só entram os que a planilha multiplica. */

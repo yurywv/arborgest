@@ -50,7 +50,7 @@ function toInputs(v: Values, service: ServiceCode): Record<string, unknown> {
     const f = fields.get(k);
     if (typeof x !== "string" || !f) return [k, x];
     if (f.kind === "text") return [k, x.trim() === "" ? null : x];
-    if (f.kind === "select") return [k, x === "" ? "NONE" : x];
+    if (f.kind === "select") return [k, x === "" ? ("emptyAs" in f ? f.emptyAs : "NONE") : x];
     if (f.kind === "yesno") return [k, undefined];
     return [k, num(x, !!f.optional)];
   }));

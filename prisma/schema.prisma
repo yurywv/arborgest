@@ -266,6 +266,9 @@ model Opportunity {
   notes            String?
   pricingEstimates PricingEstimate[]
   activities       OpportunityActivity[]
+  /// Base técnica: inspeções e avaliações de risco que originaram a oportunidade.
+  inspections      Inspection[]          @relation("OpportunityInspections")
+  riskAssessments  RiskAssessment[]      @relation("OpportunityRiskAssessments")
   createdAt        DateTime              @default(now())
   updatedAt        DateTime              @updatedAt
 
@@ -525,6 +528,8 @@ model Inspection {
   notes               String?
   findings            InspectionFinding[]
   photos              Photo[]
+  opportunities       Opportunity[]       @relation("OpportunityInspections")
+  pricingEstimates    PricingEstimate[]   @relation("EstimateInspections")
   createdAt           DateTime            @default(now())
   updatedAt           DateTime            @updatedAt
 
@@ -547,12 +552,12 @@ model InspectionFinding {
 // ─────────────────────── Avaliação de risco (ISA TRAQ) ───────────────────────
 
 model RiskAssessment {
-  id                String     @id @default(cuid())
+  id                String            @id @default(cuid())
   treeId            String
-  tree              Tree       @relation(fields: [treeId], references: [id], onDelete: Cascade)
+  tree              Tree              @relation(fields: [treeId], references: [id], onDelete: Cascade)
   assessedAt        DateTime
   assessorId        String?
-  assessor          User?      @relation(fields: [assessorId], references: [id], onDelete: SetNull)
+  assessor          User?             @relation(fields: [assessorId], references: [id], onDelete: SetNull)
   targets           String[] // PESSOAS, VEICULOS, ...
   targetOccupancy   String // RARA, OCASIONAL, FREQUENTE, CONSTANTE
   partAtRisk        String // parte com possibilidade de falha
@@ -563,8 +568,10 @@ model RiskAssessment {
   recommendedAction String?
   residualRisk      RiskLevel?
   notes             String?
-  createdAt         DateTime   @default(now())
-  updatedAt         DateTime   @updatedAt
+  opportunities     Opportunity[]     @relation("OpportunityRiskAssessments")
+  pricingEstimates  PricingEstimate[] @relation("EstimateRiskAssessments")
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
 
   @@index([treeId, assessedAt])
   @@index([riskRating])
@@ -992,14 +999,17 @@ model PricingEstimate {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  items        PricingEstimateItem[]
-  calculations PricingCalculation[]
-  overrides    PricingOverride[]
-  approvals    ProposalApproval[]
-  proposals    CommercialProposal[]
-  auditLogs    PricingAuditLog[]
-  contracts    Contract[]
-  workOrders   WorkOrder[]
+  items           PricingEstimateItem[]
+  calculations    PricingCalculation[]
+  overrides       PricingOverride[]
+  approvals       ProposalApproval[]
+  proposals       CommercialProposal[]
+  auditLogs       PricingAuditLog[]
+  contracts       Contract[]
+  workOrders      WorkOrder[]
+  /// Base técnica do orçamento (várias inspeções/avaliações de risco).
+  inspections     Inspection[]          @relation("EstimateInspections")
+  riskAssessments RiskAssessment[]      @relation("EstimateRiskAssessments")
 
   @@index([status])
   @@index([clientId])

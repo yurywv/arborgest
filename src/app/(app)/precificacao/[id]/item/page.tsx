@@ -28,6 +28,10 @@ export default async function ItemPage({ params, searchParams }: { params: Promi
   ]);
   const requested = spGet(sp, "servico");
   const service = item && isServiceCode(item.serviceCode) ? item.serviceCode : requested && isServiceCode(requested) ? requested : undefined;
+  // Vindo do plano de intervenções (base técnica): árvores e urgência pré-selecionadas pelo usuário ao clicar em "Precificar".
+  const planTrees = !item ? (spGet(sp, "arvores") ?? "").split(",").filter((t) => trees.some((x) => x.id === t)) : [];
+  const planUrgency = !item ? spGet(sp, "urgencia") : undefined;
+  const fromPlan = planTrees.length > 0 && !!service && SERVICES[service].perTree;
   return (
     <>
       <PageHeader
@@ -43,12 +47,12 @@ export default async function ItemPage({ params, searchParams }: { params: Promi
         services={item && service ? [service] : services}
         service={service}
         lockService={!!item}
-        initialInputs={(item?.inputs as Record<string, unknown>) ?? undefined}
+        initialInputs={(item?.inputs as Record<string, unknown>) ?? (planUrgency && ["BAIXA", "MEDIA", "ALTA", "URGENTE"].includes(planUrgency) ? { urgency: planUrgency } : undefined)}
         description={item?.description}
         canSeeCosts={hasPermission(user.permissions, "pricing:costs")}
         showComparison={hasPermission(user.permissions, "pricing:approve") || hasPermission(user.permissions, "pricing:params")}
         trees={trees}
-        initialTreeIds={item?.trees.map((t) => t.id)}
+        initialTreeIds={item ? item.trees.map((t) => t.id) : fromPlan ? planTrees : undefined}
         estimateMargin={est.marginOverride?.toString() ?? null}
         compensationRules={rules}
       />

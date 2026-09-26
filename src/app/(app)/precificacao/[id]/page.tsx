@@ -19,6 +19,7 @@ import { Badge, Card, DataList, EmptyState, LinkButton, PageHeader, TabLinks } f
 import { createContractFromEstimate, deleteEstimate, deleteItem, duplicateEstimate, requestApproval } from "../actions";
 import { AdjustItem, ApprovalDecision, CommissionForm, DiscountForm, EstimateMarginForm, RepriceButton, StatusButton, WorkOrderForm } from "./controls";
 import { ProposalForm, SendProposalForm } from "./proposta/forms";
+import { AssessmentBasis } from "@/components/assessment-basis";
 import { EstimateForm } from "../estimate-form";
 
 export const metadata = { title: "Orçamento" };
@@ -37,6 +38,7 @@ export default async function EstimatePage({ params, searchParams }: { params: P
       contact: { select: { name: true, email: true } },
       property: { select: { id: true, name: true } },
       opportunity: { select: { id: true, description: true, stage: true } },
+      _count: { select: { inspections: true, riskAssessments: true } },
       commercialOwner: { select: { name: true } },
       technicalOwner: { select: { name: true } },
       createdBy: { select: { name: true } },
@@ -99,6 +101,7 @@ export default async function EstimatePage({ params, searchParams }: { params: P
 
       <TabLinks active={aba} baseHref={`/precificacao/${e.id}`} tabs={[
         { key: "resumo", label: "Resumo", count: e.items.length },
+        { key: "base", label: "Base técnica", count: e._count.inspections + e._count.riskAssessments },
         { key: "proposta", label: "Proposta", count: e.proposals.length },
         { key: "historico", label: "Histórico" },
         ...(can("pricing:write") && editable ? [{ key: "dados", label: "Dados" }] : []),
@@ -302,6 +305,10 @@ export default async function EstimatePage({ params, searchParams }: { params: P
         </div>
       )}
 
+      {aba === "base" && (
+        <AssessmentBasis target="estimate" id={e.id} clientId={e.clientId} propertyId={e.property?.id ?? null} canWrite={can("pricing:write")}
+          priceHref={(svc, trees, urg) => `/precificacao/${e.id}/item?servico=${svc}&arvores=${trees.join(",")}&urgencia=${urg}`} />
+      )}
       {aba === "proposta" && <ProposalTab estimate={e} canWrite={can("pricing:write")} canProposal={canProposal} />}
       {aba === "historico" && <HistoryTab estimateId={e.id} costs={costs} />}
       {aba === "dados" && can("pricing:write") && editable && <DataTab estimate={e} />}

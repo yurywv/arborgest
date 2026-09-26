@@ -29,6 +29,8 @@ const optNonNeg = (label: string, max: number, int = false) =>
   );
 const optText = (max: number) => z.preprocess((v) => (typeof v === "string" && v.trim() === "" ? null : v ?? null), z.string().trim().max(max).nullable());
 
+const urgency = z.preprocess((v) => (v === "" || v === "NONE" || v === undefined ? null : v), z.enum(["BAIXA", "MEDIA", "ALTA", "URGENTE"]).nullable()).optional();
+
 const base = {
   trees: nonNegInt("Número de árvores", 100_000),
   distanceKm: nonNeg("Distância", 20_000),
@@ -38,6 +40,7 @@ const base = {
   toll: nonNeg("Pedágio", 100_000),
   mealCost: optNonNeg("Alimentação por pessoa/dia", 10_000).optional(),
   lodgingCost: optNonNeg("Hospedagem por pessoa/dia", 10_000).optional(),
+  urgency,
 };
 const fieldOp = {
   serviceType: z.coerce.number().int(),
@@ -62,6 +65,7 @@ const general = z.object({
   lodgingCost: optNonNeg("Hospedagem por pessoa/dia", 10_000).optional(),
   materials: optNonNeg("Materiais e insumos", 100_000_000).optional(),
   thirdParty: optNonNeg("Terceiros e taxas", 100_000_000).optional(),
+  urgency,
 });
 
 export const INPUT_SCHEMAS = {
@@ -96,6 +100,14 @@ export type FieldDef = {
   /** Exibe só quando outro campo tem o valor indicado (ex.: cacamba = true). */
   showIf?: { key: string; equals: unknown };
   options?: { value: string; label: string }[];
+  /** Valor enviado ao motor quando a opção vazia está selecionada (padrão "NONE"). */
+  emptyAs?: string | null;
+};
+
+const URGENCY_FIELD: FieldDef = {
+  key: "urgency", label: "Urgência", kind: "select", section: "OPERACAO", optional: true, emptyAs: null,
+  options: [{ value: "", label: "Não informada" }, { value: "BAIXA", label: "Baixa" }, { value: "MEDIA", label: "Média" }, { value: "ALTA", label: "Alta" }, { value: "URGENTE", label: "Urgente" }],
+  hint: "Definida pela base técnica (risco/condição). Aplica o acréscimo por urgência dos parâmetros.",
 };
 
 const BASE_FIELDS: FieldDef[] = [
@@ -107,6 +119,7 @@ const BASE_FIELDS: FieldDef[] = [
   { key: "lodgingCost", label: "Hospedagem por pessoa/dia", kind: "money", section: "REGIONAL", suffix: "R$", optional: true, hint: "Usado quando há hospedagem. Em branco, usa o valor padrão dos parâmetros." },
   { key: "difficulty", label: "Dificuldade", kind: "difficulty", section: "OPERACAO" },
   { key: "auxiliaries", label: "Auxiliares", kind: "int", section: "OPERACAO" },
+  URGENCY_FIELD,
 ];
 const CACAMBA_FIELDS: FieldDef[] = [
   { key: "cacamba", label: "Utiliza caçamba", kind: "bool", section: "SERVICO" },
@@ -125,6 +138,7 @@ const generalFields = (unitLabel: string): FieldDef[] => [
   { key: "days", label: "Dias de trabalho", kind: "decimal", section: "QUANTIDADE", suffix: "dias", hint: "Dias de equipe em campo/escritório para executar o serviço." },
   { key: "technicians", label: "Técnicos", kind: "int", section: "OPERACAO" },
   { key: "auxiliaries", label: "Auxiliares", kind: "int", section: "OPERACAO" },
+  URGENCY_FIELD,
   { key: "distanceKm", label: "Distância ida + volta", kind: "decimal", section: "LOGISTICA", suffix: "km" },
   { key: "toll", label: "Pedágio (por dia/viagem)", kind: "money", section: "LOGISTICA", suffix: "R$" },
   { key: "lodging", label: "Hospedagem", kind: "bool", section: "LOGISTICA" },

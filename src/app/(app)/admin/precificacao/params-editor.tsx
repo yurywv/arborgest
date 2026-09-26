@@ -54,7 +54,7 @@ export function ParamsEditor({ initial: rawInitial, versionLabel, v2Validated }:
       {hint && <span className="mt-1 block text-xs text-stone-500">{hint}</span>}
     </label>
   );
-  const money = (k: keyof PricingParams["general"], label: string, suffix = "R$") => num(label, p.general[k], (v) => upd((d) => { d.general[k] = norm(v); }), suffix);
+  const money = (k: Exclude<keyof PricingParams["general"], "urgencia">, label: string, suffix = "R$") => num(label, p.general[k], (v) => upd((d) => { d.general[k] = norm(v); }), suffix);
   const pct = (label: string, value: string, set: (frac: string) => void, hint?: string) => num(label, toPct(value), (v) => set(fromPct(v)), "%", hint);
 
   return (
@@ -129,6 +129,10 @@ export function ParamsEditor({ initial: rawInitial, versionLabel, v2Validated }:
         {pct("Margem mínima — aprovação pelo comercial", p.approval.margemComercial, (v) => upd((d) => { d.approval.margemComercial = v; }), "Margem efetiva ≥ este valor: o comercial aprova.")}
         {pct("Margem mínima — aprovação gerencial", p.approval.margemGerencial, (v) => upd((d) => { d.approval.margemGerencial = v; }), "Entre este valor e o comercial: gestor. Abaixo: diretoria/administração.")}
         {pct("Desconto que exige confirmação", p.approval.descontoAlerta, (v) => upd((d) => { d.approval.descontoAlerta = v; }))}
+        {(["BAIXA", "MEDIA", "ALTA", "URGENTE"] as const).map((u) =>
+          pct(`Acréscimo por urgência — ${({ BAIXA: "baixa", MEDIA: "média", ALTA: "alta", URGENTE: "urgente" })[u]}`, p.general.urgencia?.[u] ?? "0",
+            (v) => upd((d) => { d.general.urgencia = { BAIXA: "0", MEDIA: "0", ALTA: "0", URGENTE: "0", ...d.general.urgencia, [u]: v }; }),
+            u === "URGENTE" ? "Sobre o custo operacional do item, conforme a urgência definida pela base técnica (risco/condição)." : undefined))}
         <label className="flex items-center gap-3 self-end rounded-xl border border-stone-200 p-3">
           <input type="checkbox" className="size-5 accent-brand-600" checked={p.approval.fluxoObrigatorio} onChange={(e) => upd((d) => { d.approval.fluxoObrigatorio = e.target.checked; })} />
           <span className="text-sm"><b>Aprovação interna obrigatória</b><span className="block text-xs text-stone-500">Rascunho → aprovação → proposta → cliente</span></span>

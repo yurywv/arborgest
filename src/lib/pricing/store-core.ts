@@ -9,7 +9,8 @@ import { DIFFICULTIES, DIFFICULTY_LABEL } from "./types";
 
 type Tx = PrismaClient | Prisma.TransactionClient;
 
-const GENERAL_LABELS: Record<keyof PricingParams["general"], [string, string]> = {
+type ScalarGeneral = Exclude<keyof PricingParams["general"], "urgencia">;
+const GENERAL_LABELS: Record<ScalarGeneral, [string, string]> = {
   tecnicoDia: ["Custo técnico/dia", "R$"],
   auxiliarDia: ["Custo auxiliar/dia", "R$"],
   custoKm: ["Custo por km rodado", "R$/km"],
@@ -30,8 +31,11 @@ const GENERAL_LABELS: Record<keyof PricingParams["general"], [string, string]> =
 function normalized(raw: PricingParams) {
   const p = normalizeParams(raw);
   const parameters: Prisma.PricingParameterCreateManyVersionInput[] = [
-    ...Object.entries(p.general).map(([k, v]) => ({
-      group: "GERAL", key: `geral.${k}`, label: GENERAL_LABELS[k as keyof PricingParams["general"]][0], value: v, unit: GENERAL_LABELS[k as keyof PricingParams["general"]][1],
+    ...(Object.keys(GENERAL_LABELS) as ScalarGeneral[]).map((k) => ({
+      group: "GERAL", key: `geral.${k}`, label: GENERAL_LABELS[k][0], value: p.general[k], unit: GENERAL_LABELS[k][1],
+    })),
+    ...Object.entries(p.general.urgencia ?? {}).map(([k, v]) => ({
+      group: "GERAL", key: `geral.urgencia.${k}`, label: `Acréscimo por urgência (${k.toLowerCase()})`, value: v, unit: "fração",
     })),
     { group: "REGRAS", key: "regras.podaPriceMethod", label: "Metodologia de preço da poda", textValue: p.rules.podaPriceMethod },
     { group: "REGRAS", key: "regras.minTecnicos", label: "Quantidade mínima de técnicos por serviço", value: String(p.rules.minTecnicos), unit: "técnicos" },

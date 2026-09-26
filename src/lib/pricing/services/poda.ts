@@ -11,7 +11,7 @@
  *    PADRONIZADA:         preço final = operacional ÷ (1 − margem) ÷ (1 − imposto)
  */
 import {
-  Calc, EngineError, buildResult, cacambaBlock, commonBlock, derived, effectiveRules, licenseTier, modifiersBlock, priceBlock, supervisionBlock,
+  Calc, EngineError, buildResult, cacambaBlock, commonBlock, derived, effectiveRules, licenseTier, modifiersBlock, priceBlock, supervisionBlock, urgencyBlock,
 } from "../engine";
 import { dec, fmtBRL, fmtN } from "../decimal";
 import type { CalcResult, PodaInputs, PricingParams } from "../types";
@@ -47,9 +47,10 @@ export function calcPoda(p: PricingParams, inp: PodaInputs): CalcResult {
   calc.add("fatorTipo", "Fator tipo de poda", typeFactor, `${type.label}: ${fmtN(typeFactor)}`, "FATOR", "num");
   const afterModifiers = calc.add("aposModificadores", "Valor após modificadores", baseCost.mul(typeFactor).mul(mods.factor),
     `${fmtBRL(baseCost)} × ${fmtN(typeFactor)} × ${fmtN(mods.factor)}`, "TOTAL");
-  const operational = cac.cost.plus(c.rateio).plus(licenca).plus(afterModifiers).plus(sup.total);
-  calc.add("custoOperacional", "Custo operacional", operational,
+  const baseOperational = cac.cost.plus(c.rateio).plus(licenca).plus(afterModifiers).plus(sup.total);
+  calc.add("custoOperacional", "Custo operacional", baseOperational,
     `Caçamba + rateio fixo + licenciamento + valor após modificadores${sup.total.isZero() ? "" : " + acompanhamento técnico"}`, "TOTAL");
+  const operational = urgencyBlock(p, inp.urgency, baseOperational, calc);
 
   const method = effectiveRules(p).podaPriceMethod === "LEGACY" ? "LEGACY_PODA" : "STANDARD";
   const price = priceBlock(p, operational, inp.trees, calc, method);
@@ -58,6 +59,7 @@ export function calcPoda(p: PricingParams, inp: PodaInputs): CalcResult {
     costs: {
       tecnico: c.tecnico, auxiliares: c.auxiliares, deslocamento: c.deslocamento, alimentacao: c.alimentacao,
       hospedagem: c.hospedagem, combustivel, cacamba: cac.cost, licenca, rateioFixo: c.rateio, supervisao: sup.total,
+      urgencia: operational.minus(baseOperational),
     },
     baseCost, serviceTypeFactor: typeFactor, mods, afterModifiers, operational, price, method, auxiliaries: inp.auxiliaries,
     details: { cacambaQty: cac.qty, supervisionDays: sup.days, mealCost: c.meal.toString(), lodgingCost: c.lodgingDay.toString() },
