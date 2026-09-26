@@ -156,6 +156,7 @@ model User {
   approvalsDecided      ProposalApproval[]        @relation("ApprovalDecider")
   pricingAuditLogs      PricingAuditLog[]
   opportunityActivities OpportunityActivity[]
+  sentEmails            SentEmail[]
 }
 
 model Team {
@@ -211,6 +212,7 @@ model Client {
   workOrders       WorkOrder[]
   documents        Document[]
   pricingEstimates PricingEstimate[]
+  sentEmails       SentEmail[]
   proposals        CommercialProposal[]
 
   @@index([legalName])
@@ -232,6 +234,7 @@ model Contact {
   notes            String?
   pricingEstimates PricingEstimate[]
   proposals        CommercialProposal[]
+  sentEmails       SentEmail[]
   activities       OpportunityActivity[]
   createdAt        DateTime              @default(now())
   updatedAt        DateTime              @updatedAt
@@ -722,6 +725,30 @@ model AuditLog {
 
   @@index([entity, entityId])
   @@index([createdAt])
+}
+
+/// E-mail enviado pelo sistema a um cliente (conta Gmail cadastrada). Fica no histórico do cliente.
+model SentEmail {
+  id          String   @id @default(cuid())
+  clientId    String?
+  client      Client?  @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  contactId   String?
+  contact     Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  to          String
+  cc          String?
+  subject     String
+  body        String
+  /// [{ name, size, kind: "DOCUMENTO" | "PROPOSTA", id }]
+  attachments Json     @default("[]")
+  status      String // ENVIADO | FALHA
+  error       String?
+  messageId   String?
+  fromAddress String?
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+
+  @@index([clientId, createdAt])
 }
 
 model Setting {

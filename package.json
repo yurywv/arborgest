@@ -23,7 +23,8 @@
     "pricing:parity": "tsx scripts/pricing-parity/generate-excel-fixtures.mts",
     "test:e2e:pricing": "node e2e/pricing.mjs",
     "test:e2e:contracts": "node e2e/contracts.mjs",
-    "test:e2e:crm-ops": "node e2e/crm-ops.mjs"
+    "test:e2e:crm-ops": "node e2e/crm-ops.mjs",
+    "test:e2e:email": "node e2e/email.mjs"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

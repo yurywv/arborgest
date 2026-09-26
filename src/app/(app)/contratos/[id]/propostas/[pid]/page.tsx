@@ -94,7 +94,7 @@ export default async function ContractProposalPage({ params }: { params: Promise
           )}
         </div>
         <div className="space-y-4">
-          {canWrite && open && <Card title="Enviar ao cliente"><SendContractProposalForm contractId={id} proposalId={p.id} smtp={mailConfigured()} /></Card>}
+          {canWrite && open && <Card title="Enviar ao cliente"><SendContractProposalForm contractId={id} proposalId={p.id} smtp={await mailConfigured()} /></Card>}
           {canWrite && open && <Card title="Resultado"><DecideContractProposalForm contractId={id} proposalId={p.id} /></Card>}
           <Card title="Documentos da proposta">
             {can("files:write") && <div className="mb-3"><DocumentUploader refs={{ contractId: id, clientId: p.contract.clientId, proposalId: p.id }} /></div>}

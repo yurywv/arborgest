@@ -318,7 +318,7 @@ async function ProposalTab({ estimate: e, canWrite, canProposal }: {
     title: "", object: "", scope: "", contactId: null, validUntil: null, deadline: "", paymentTerms: "",
     conditions: "", assumptions: "", exclusions: "", responsibilities: "", notes: "",
   };
-  const smtp = mailConfigured();
+  const smtp = await mailConfigured();
   return (
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
       <div className="space-y-4">

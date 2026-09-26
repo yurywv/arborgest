@@ -9,7 +9,7 @@ import { hashPassword, passwordSchema } from "@/lib/password";
 import { bool, fieldError, formObject, optStr, reqStr, runAction, UserError, finish } from "@/lib/actions";
 import { SETTING_DEFAULTS } from "@/lib/settings";
 import { generateNotifications } from "@/lib/notifications";
-import { mailConfigured, mailLayout, sendMail } from "@/lib/mail";
+import { mailConfigured, mailLayout, removeMailAccount, saveMailAccount, sendMail, getMailAccount } from "@/lib/mail";
 import type { ActionState } from "@/lib/action-state";
 
 // ── Usuários ──
@@ -138,7 +138,7 @@ export async function runNotificationsNow(): Promise<ActionState> {
 export async function sendTestMail(): Promise<ActionState> {
   return runAction(async () => {
     const user = await assertPermission("settings:manage");
-    if (!mailConfigured()) return { ok: false, message: "SMTP não configurado: defina SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD e MAIL_FROM no ambiente e publique novamente." };
+    if (!(await mailConfigured())) return { ok: false, message: "Cadastre a conta Gmail (e-mail e senha de app) antes de testar." };
     try {
       await sendMail(
         user.email,
@@ -150,7 +150,38 @@ export async function sendTestMail(): Promise<ActionState> {
       const msg = e instanceof Error ? e.message : String(e);
       return { ok: false, message: `Falha no envio: ${msg.slice(0, 300)}` };
     }
+    await audit(user.id, "MAIL_TEST", "Setting", null, `teste para ${user.email}`);
     return { ok: true, message: `E-mail de teste enviado para ${user.email}. Verifique a caixa de entrada (e o spam).` };
+  });
+}
+
+// ── Conta Gmail para envio ──
+const gmailSchema = z.object({
+  gmailUser: z.preprocess((v) => String(v ?? "").trim().toLowerCase(), z.email("Informe o endereço completo da conta Gmail / Google Workspace.")),
+  senderName: reqStr("Nome do remetente", 80),
+  // Senha de app: 16 letras (o Google exibe em grupos de 4, com espaços). Em branco mantém a atual.
+  appPassword: z.preprocess((v) => String(v ?? "").replace(/\s+/g, ""), z.string().refine((v) => v === "" || /^[a-zA-Z]{16}$/.test(v), "A senha de app do Google tem 16 letras.")),
+});
+
+export async function saveGmailAccount(_: ActionState, fd: FormData): Promise<ActionState> {
+  return runAction(async () => {
+    const me = await assertPermission("settings:manage");
+    const d = gmailSchema.parse(formObject(fd));
+    const current = await getMailAccount();
+    const changedUser = current?.user !== d.gmailUser;
+    if (!d.appPassword && (!current?.hasPassword || changedUser)) return fieldError("appPassword", "Informe a senha de app da conta.");
+    await saveMailAccount(d.gmailUser, d.senderName, d.appPassword || null);
+    await audit(me.id, "UPDATE", "Setting", null, `conta Gmail de envio: ${d.gmailUser}${d.appPassword ? " (senha de app atualizada)" : ""}`);
+    return { ok: true, message: "Conta Gmail salva. Use “Enviar e-mail de teste” para confirmar." };
+  });
+}
+
+export async function deleteGmailAccount(): Promise<ActionState> {
+  return runAction(async () => {
+    const me = await assertPermission("settings:manage");
+    await removeMailAccount();
+    await audit(me.id, "DELETE", "Setting", null, "conta Gmail de envio removida");
+    return { ok: true, message: "Conta removida." };
   });
 }
 

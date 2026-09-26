@@ -78,7 +78,7 @@ export async function requestPasswordReset(_: ActionState, fd: FormData): Promis
           }),
         );
       } catch (e) {
-        // Não revela ao solicitante se o e-mail existe nem detalhes do servidor SMTP.
+        // Não revela ao solicitante se o e-mail existe nem detalhes do envio.
         console.error("[mail] falha ao enviar redefinição de senha:", e);
       }
       await audit(user.id, "PASSWORD_RESET_REQUEST", "User", user.id);

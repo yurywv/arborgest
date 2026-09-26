@@ -39,7 +39,7 @@ export function SendProposalForm({ proposalId, smtp }: { proposalId: string; smt
       <Field name="to" label="Destinatário(s)" hint="Separe vários e-mails por vírgula." />
       <TextArea name="message" label="Mensagem" rows={3} />
       <Checkbox name="byEmail" label="Enviar por e-mail com o PDF anexo"
-        hint={smtp ? "Usa o SMTP configurado." : "SMTP não configurado — apenas registra o envio (baixe o PDF e envie manualmente)."} />
+        hint={smtp ? "Envia pela conta Gmail cadastrada no sistema." : "Nenhuma conta Gmail cadastrada — apenas registra o envio (baixe o PDF e envie manualmente)."} />
       <SubmitButton>Registrar envio</SubmitButton>
     </ActionForm>
   );

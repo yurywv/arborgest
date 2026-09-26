@@ -170,16 +170,16 @@ Caminho mais simples (tudo pelo painel da Vercel, sem copiar credenciais de banc
 3. Em *Settings › Environment Variables* defina:
    - `AUTH_SECRET` — gere com `openssl rand -base64 32`;
    - `ADMIN_EMAIL` e `ADMIN_PASSWORD` (8+ caracteres com letras e números) — o primeiro administrador é criado no build; depois de entrar, a senha pode ser trocada em *Meu perfil* e essas variáveis podem ser removidas;
-   - opcionais: `CRON_SECRET` (alertas diários via `vercel.json`), `APP_URL` (domínio próprio; sem ela usa o domínio da requisição), `SMTP_*` e `MAIL_FROM` (e-mail de recuperação de senha — veja abaixo).
+   - opcionais: `CRON_SECRET` (alertas diários via `vercel.json`), `APP_URL` (domínio próprio; sem ela usa o domínio da requisição).
 4. Faça *Redeploy* após definir as variáveis.
 
-**E-mail com Gmail / Google Workspace** (recuperação de senha):
+**E-mail pelo Gmail / Google Workspace** (propostas, mensagens a clientes e recuperação de senha):
 
 1. Na conta Google remetente, ative a verificação em duas etapas e crie uma **senha de app** em <https://myaccount.google.com/apppasswords>.
-2. Na Vercel (*Settings › Environment Variables*, ambiente Production), defina:
-   `SMTP_HOST=smtp.gmail.com`, `SMTP_PORT=465`, `SMTP_USER=<endereço completo>`, `SMTP_PASSWORD=<senha de app, sem espaços>` (marque como *Sensitive*) e `MAIL_FROM=ArborGest <mesmo endereço>`.
+2. No ArborGest, em *Administração › Configurações › E-mail — conta Gmail*, informe a conta, o nome do remetente e a senha de app.
+   A senha é guardada cifrada (AES-256-GCM, chave derivada de `AUTH_SECRET`) e nunca é exibida de volta. Se `AUTH_SECRET` mudar, cadastre a senha de novo.
+3. Clique em **Enviar e-mail de teste**. Uma falha mostra a mensagem do Gmail.
    Defina também `APP_URL=https://<seu domínio>` para que os links dos e-mails usem sempre o domínio oficial.
-3. Faça *Redeploy* e, em *Administração › Configurações*, clique em **Enviar e-mail de teste**. Uma falha mostra a mensagem do servidor SMTP.
 
 Limites do Gmail: cerca de 500 destinatários/dia (conta pessoal) ou 2.000/dia (Workspace).
 
@@ -249,6 +249,8 @@ npm run test:unit                                   # Pricing Engine: fórmulas,
 npm run test:smoke -- http://localhost:3000         # 133 rotas + permissões dos 6 perfis + exportações
 npm run test:e2e:pricing -- http://localhost:3000   # fluxo de precificação completo (orçamento → proposta → aceite → contrato/OS)
 npm run test:e2e:contracts -- http://localhost:3000 # propostas em PDF no contrato, anexos e histórico do cliente
+MAIL_CAPTURE_DIR=/tmp/mail npm start  # (outro terminal) e então:
+npm run test:e2e:email -- http://localhost:3000 /tmp/mail  # envio pela conta Gmail cadastrada (mensagens gravadas em .eml, nada vai ao Google)
 npm run test:e2e:crm-ops -- http://localhost:3000   # serviços do simulador, log da oportunidade, origem da OS, etiqueta QR, propriedade pública/privada
 npx playwright install chromium                     # uma vez
 SERVER_LOG=caminho/do/log npm run test:e2e -- http://localhost:3000 e2e/screenshots

@@ -75,7 +75,7 @@ export async function createProposal(estimateId: string, _: ActionState, fd: For
   return finish(res, `/precificacao/${estimateId}?aba=proposta&p=${proposalId}`);
 }
 
-/** Registra o envio ao cliente. Com SMTP configurado e "enviar por e-mail" marcado, envia o PDF anexo. */
+/** Registra o envio ao cliente. Com a conta Gmail cadastrada e "enviar por e-mail" marcado, envia o PDF anexo. */
 export async function sendProposal(proposalId: string, _: ActionState, fd: FormData): Promise<ActionState> {
   return auditedRun("sendProposal", null, async () => {
     const user = await assertPermission("pricing:write");

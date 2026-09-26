@@ -1,48 +1,93 @@
 import "server-only";
+import crypto from "node:crypto";
+import fs from "node:fs/promises";
+import path from "node:path";
 import nodemailer, { type Transporter } from "nodemailer";
+import { db } from "./db";
+import { open, seal } from "./secret-box";
 
 /**
- * Envio de e-mail via SMTP (qualquer provedor: Gmail/Google Workspace, Microsoft 365, Resend, SES...).
- * Sem SMTP configurado, o conteúdo é registrado no log do servidor (útil em desenvolvimento).
- *
- * Gmail: SMTP_HOST=smtp.gmail.com, SMTP_PORT=465, SMTP_USER=conta@gmail.com,
- * SMTP_PASSWORD=senha de app (16 letras), MAIL_FROM="ArborGest <conta@gmail.com>".
+ * Envio de e-mail pela conta Gmail / Google Workspace cadastrada em Administração › Configurações.
+ * Servidor fixo do Google (smtp.gmail.com:465, SSL) com senha de app — a senha fica cifrada no banco.
+ * Sem conta cadastrada, o conteúdo é apenas registrado no log do servidor.
+ * MAIL_CAPTURE_DIR (somente testes/desenvolvimento): grava as mensagens em arquivos .eml em vez de enviar.
  */
-export const mailConfigured = () => !!process.env.SMTP_HOST;
+const K = { user: "mail_gmail_user", name: "mail_sender_name", password: "mail_gmail_password" } as const;
+const PURPOSE = "gmail-app-password";
+export const GMAIL_HOST = "smtp.gmail.com";
+export const GMAIL_PORT = 465;
 
-let transport: Transporter | null = null;
-function getTransport() {
-  if (!transport) {
-    const port = Number(process.env.SMTP_PORT || 587);
-    transport = nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port,
-      secure: port === 465,
-      requireTLS: port === 587, // STARTTLS obrigatório na porta de submissão
-      auth: process.env.SMTP_USER ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASSWORD } : undefined,
-      connectionTimeout: 10_000,
-      greetingTimeout: 10_000,
-      socketTimeout: 15_000,
-    });
-  }
-  return transport;
+export type MailAccount = { user: string; senderName: string; hasPassword: boolean; updatedAt: Date | null };
+
+/** Dados públicos da conta (nunca a senha). */
+export async function getMailAccount(): Promise<MailAccount | null> {
+  const rows = await db.setting.findMany({ where: { key: { in: Object.values(K) } } });
+  const get = (k: string) => rows.find((r) => r.key === k);
+  const user = get(K.user)?.value;
+  if (!user) return null;
+  return { user, senderName: get(K.name)?.value || "ArborGest", hasPassword: !!get(K.password)?.value, updatedAt: get(K.password)?.updatedAt ?? get(K.user)?.updatedAt ?? null };
 }
 
-function sender() {
-  if (process.env.MAIL_FROM) return process.env.MAIL_FROM;
-  // Gmail e Microsoft 365 exigem remetente igual à conta autenticada.
-  return process.env.SMTP_USER ? `ArborGest <${process.env.SMTP_USER}>` : "ArborGest <no-reply@localhost>";
+export const mailConfigured = async () => {
+  const a = await getMailAccount();
+  return !!a?.hasPassword;
+};
+
+/** Grava a conta. Senha em branco mantém a atual. */
+export async function saveMailAccount(user: string, senderName: string, appPassword: string | null) {
+  const ops = [
+    db.setting.upsert({ where: { key: K.user }, create: { key: K.user, value: user }, update: { value: user } }),
+    db.setting.upsert({ where: { key: K.name }, create: { key: K.name, value: senderName }, update: { value: senderName } }),
+  ];
+  if (appPassword) {
+    const sealed = seal(appPassword, PURPOSE);
+    ops.push(db.setting.upsert({ where: { key: K.password }, create: { key: K.password, value: sealed }, update: { value: sealed } }));
+  }
+  await db.$transaction(ops);
+}
+
+export async function removeMailAccount() {
+  await db.setting.deleteMany({ where: { key: { in: Object.values(K) } } });
+}
+
+async function transportAndSender(): Promise<{ transport: Transporter; from: string; capture: boolean } | null> {
+  const a = await getMailAccount();
+  const quoted = (n: string) => `"${n.replace(/["\\]/g, "")}"`;
+  // Captura local para testes: nunca ativa na Vercel.
+  if (process.env.MAIL_CAPTURE_DIR && !process.env.VERCEL) {
+    return { transport: nodemailer.createTransport({ streamTransport: true, buffer: true }), from: `${quoted(a?.senderName ?? "ArborGest")} <${a?.user ?? "teste@localhost"}>`, capture: true };
+  }
+  if (!a?.hasPassword) return null;
+  const row = await db.setting.findUnique({ where: { key: K.password } });
+  const pass = row ? open(row.value, PURPOSE) : null;
+  if (!pass) throw new Error("Não foi possível ler a senha de app do Gmail (AUTH_SECRET mudou?). Cadastre a senha novamente em Configurações.");
+  return {
+    transport: nodemailer.createTransport({
+      host: GMAIL_HOST, port: GMAIL_PORT, secure: true, auth: { user: a.user, pass },
+      connectionTimeout: 10_000, greetingTimeout: 10_000, socketTimeout: 20_000,
+    }),
+    // O Gmail exige remetente igual à conta autenticada.
+    from: `${quoted(a.senderName)} <${a.user}>`,
+    capture: false,
+  };
 }
 
 export type MailAttachment = { filename: string; content: Buffer; contentType?: string };
+export type MailOptions = { cc?: string; replyTo?: string };
 
-export async function sendMail(to: string, subject: string, text: string, html?: string, attachments?: MailAttachment[]) {
-  if (!mailConfigured()) {
-    console.info(`[mail:dev] Para: ${to}\nAssunto: ${subject}\n${text}`);
-    return { delivered: false };
+export async function sendMail(to: string, subject: string, text: string, html?: string, attachments?: MailAttachment[], opts: MailOptions = {}) {
+  const t = await transportAndSender();
+  if (!t) {
+    console.info(`[mail:sem-conta] Para: ${to}\nAssunto: ${subject}\n${text}`);
+    return { delivered: false as const, messageId: null };
   }
-  await getTransport().sendMail({ from: sender(), to, subject, text, html, attachments });
-  return { delivered: true };
+  const info = await t.transport.sendMail({ from: t.from, to, cc: opts.cc, replyTo: opts.replyTo, subject, text, html, attachments });
+  if (t.capture) {
+    const dir = process.env.MAIL_CAPTURE_DIR!;
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(path.join(dir, `${Date.now()}-${crypto.randomBytes(3).toString("hex")}.eml`), (info as unknown as { message: Buffer }).message);
+  }
+  return { delivered: true as const, messageId: info.messageId ?? null };
 }
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);

@@ -31,13 +31,13 @@ export async function renderProposalPdf(id: string) {
   };
 }
 
-/** Envia o PDF da proposta por e-mail (SMTP). Usado pela Precificação e por Contratos. */
+/** Envia o PDF da proposta pela conta Gmail cadastrada. Usado pela Precificação e por Contratos. */
 export async function emailProposal(
   p: { id: string; number: string; title: string; total: { toString(): string } },
   to: string,
   message: string,
 ): Promise<{ ok: true; sentTo: string } | { ok: false; state: ActionState }> {
-  if (!mailConfigured()) throw new UserError("SMTP não configurado. Baixe o PDF e envie manualmente, ou desmarque o envio por e-mail.");
+  if (!(await mailConfigured())) throw new UserError("Nenhuma conta Gmail cadastrada para envio (Administração › Configurações). Baixe o PDF e envie manualmente, ou desmarque o envio por e-mail.");
   const emails = to.split(/[;,\s]+/).filter(Boolean);
   if (!emails.length || emails.some((e) => !z.email().safeParse(e).success))
     return { ok: false, state: { ok: false, errors: { to: "Informe e-mail(s) válido(s)." }, message: "Destinatário inválido." } };

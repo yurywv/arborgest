@@ -53,7 +53,7 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
                   {k.isPrimary && <Badge tone="green">Principal</Badge>}
                 </div>
               </div>
-              {k.email && <p className="mt-2 truncate text-sm"><a className="link" href={`mailto:${k.email}`}>{k.email}</a></p>}
+              {k.email && <p className="mt-2 truncate text-sm">{hasPermission(user.permissions, "clients:write") ? <Link className="link" href={`/emails/novo?contato=${k.id}`}>{k.email}</Link> : k.email}</p>}
               <div className="mt-3 flex flex-wrap gap-1.5">
                 {(k.mobile || k.phone) && <a href={`tel:${k.mobile ?? k.phone}`} className="btn btn-secondary btn-sm"><Phone className="size-3.5" /> {k.mobile ?? k.phone}</a>}
                 {k.whatsapp && <a href={whatsappLink(k.whatsapp)!} target="_blank" rel="noopener noreferrer" className="btn btn-secondary btn-sm"><MessageCircle className="size-3.5" /> WhatsApp</a>}

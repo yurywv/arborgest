@@ -1,16 +1,16 @@
 import Link from "next/link";
-import { FileCheck2, FileDown, FileSignature, FileText, Handshake, Paperclip, Send, Calculator } from "lucide-react";
+import { FileCheck2, FileDown, FileSignature, FileText, Handshake, Mail, Paperclip, Send, Calculator } from "lucide-react";
 import { fmtDate } from "@/lib/format";
 import { Badge, Card } from "@/components/ui";
 
 export type HistoryEvent = {
-  at: Date; kind: "proposta" | "envio" | "aceite" | "contrato" | "orcamento" | "documento";
+  at: Date; kind: "proposta" | "envio" | "aceite" | "contrato" | "orcamento" | "documento" | "email";
   title: string; detail?: string; href?: string; external?: boolean; pdf?: string;
   status?: { label: string; tone?: Parameters<typeof Badge>[0]["tone"] };
 };
 
-const ICON = { proposta: FileText, envio: Send, aceite: FileCheck2, contrato: Handshake, orcamento: Calculator, documento: Paperclip } as const;
-const KIND = { proposta: "Proposta", envio: "Envio", aceite: "Aceite", contrato: "Contrato", orcamento: "Orçamento", documento: "Documento" } as const;
+const ICON = { proposta: FileText, envio: Send, aceite: FileCheck2, contrato: Handshake, orcamento: Calculator, documento: Paperclip, email: Mail } as const;
+const KIND = { proposta: "Proposta", envio: "Envio", aceite: "Aceite", contrato: "Contrato", orcamento: "Orçamento", documento: "Documento", email: "E-mail" } as const;
 
 /** Linha do tempo do cliente: propostas (emissão, envio, aceite), contratos, orçamentos e documentos. */
 export function ClientHistory({ events }: { events: HistoryEvent[] }) {

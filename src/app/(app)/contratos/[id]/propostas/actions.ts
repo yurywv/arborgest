@@ -107,7 +107,7 @@ async function loadOwned(contractId: string, proposalId: string) {
   return p;
 }
 
-/** Registra o envio ao cliente; com SMTP configurado e "enviar por e-mail" marcado, envia o PDF anexo. */
+/** Registra o envio ao cliente; com a conta Gmail cadastrada e "enviar por e-mail" marcado, envia o PDF anexo. */
 export async function sendContractProposal(contractId: string, proposalId: string, _: ActionState, fd: FormData): Promise<ActionState> {
   return runAction(async () => {
     const user = await assertPermission("contracts:write");

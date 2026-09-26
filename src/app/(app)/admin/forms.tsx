@@ -4,7 +4,7 @@ import { ActionForm, Checkbox, CheckboxGroup, Field, FormActions, FormSection, S
 import { ACTION_LABELS, PERMISSION_GROUPS } from "@/lib/auth/permissions";
 import type { Option } from "@/lib/catalogs";
 import { SETTING_DEFAULTS } from "@/lib/settings-defaults";
-import { saveProfile, saveRole, saveSettings, saveTeam, saveUser } from "./actions";
+import { saveGmailAccount, saveProfile, saveRole, saveSettings, saveTeam, saveUser } from "./actions";
 import { changePassword } from "@/app/(auth)/actions";
 
 export function UserForm({ user, roles }: { user?: User; roles: Option[] }) {
@@ -126,6 +126,20 @@ export function PasswordForm() {
         <Field name="confirm" label="Confirme a nova senha" type="password" autoComplete="new-password" required />
       </FormSection>
       <SubmitButton>Alterar senha</SubmitButton>
+    </ActionForm>
+  );
+}
+
+/** Conta Gmail / Google Workspace usada para todos os envios. A senha de app nunca é exibida de volta. */
+export function GmailAccountForm({ account }: { account: { user: string; senderName: string; hasPassword: boolean } | null }) {
+  return (
+    <ActionForm action={saveGmailAccount} className="space-y-3" refreshOnSuccess
+      onSuccess={() => { const el = document.getElementById("f-appPassword") as HTMLInputElement | null; if (el) el.value = ""; }}>
+      <Field name="gmailUser" label="Conta Gmail / Google Workspace" type="email" required defaultValue={account?.user} />
+      <Field name="senderName" label="Nome do remetente" required defaultValue={account?.senderName} hint="Aparece para o destinatário antes do endereço." />
+      <Field name="appPassword" label="Senha de app do Google" type="password" autoComplete="new-password" required={!account?.hasPassword}
+        hint={account?.hasPassword ? "Já cadastrada (guardada cifrada). Preencha só para trocar." : "Gerada em myaccount.google.com › Segurança › Senhas de app (exige verificação em duas etapas). 16 letras."} />
+      <SubmitButton>Salvar conta Gmail</SubmitButton>
     </ActionForm>
   );
 }

@@ -66,7 +66,18 @@ export default async function ClientDetail({ params, searchParams }: { params: P
     { key: "historico", label: "Histórico" },
   ];
 
+  const emails = tab !== "historico" ? [] : await db.sentEmail.findMany({
+    where: { clientId: id }, orderBy: { createdAt: "desc" }, take: 200, include: { user: { select: { name: true } } },
+  });
   const history: HistoryEvent[] = tab !== "historico" ? [] : [
+    ...emails.map((m): HistoryEvent => {
+      const att = (m.attachments as { name: string }[] | null) ?? [];
+      return {
+        at: m.createdAt, kind: "email", title: `E-mail: ${m.subject}`,
+        detail: [`para ${m.to}`, m.cc && `cc ${m.cc}`, att.length && `anexos: ${att.map((a) => a.name).join(", ")}`, m.user && `por ${m.user.name}`, m.error && `erro: ${m.error}`].filter(Boolean).join(" · "),
+        status: m.status === "ENVIADO" ? { label: "Enviado", tone: "green" } : { label: "Falha", tone: "red" },
+      };
+    }),
     ...proposals.flatMap((p): HistoryEvent[] => [
       { at: p.date, kind: "proposta", title: `Proposta ${p.number}${p.version > 1 ? ` (versão ${p.version})` : ""} emitida`, detail: `${p.title} · ${fmtMoney(p.total)}${p.contract ? ` · contrato ${p.contract.number}` : p.estimate ? ` · orçamento ${p.estimate.number}` : ""}`,
         href: proposalHref(p), pdf: `/api/propostas/${p.id}/pdf`, status: { label: PROPOSAL_STATUS[p.status], tone: PROPOSAL_STATUS_TONE[p.status] } },
@@ -122,7 +133,7 @@ export default async function ClientDetail({ params, searchParams }: { params: P
                 ["Segmento", labelOf(SEGMENTS, c.segment)],
                 ["Cadastro", fmtDate(c.createdAt)],
                 ["Telefone", c.phone && <a className="link" href={`tel:${c.phone}`}>{c.phone}</a>],
-                ["E-mail", c.email && <a className="link" href={`mailto:${c.email}`}>{c.email}</a>],
+                ["E-mail", c.email && (can("clients:write") ? <Link className="link" href={`/emails/novo?cliente=${id}&para=${encodeURIComponent(c.email)}`}>{c.email}</Link> : c.email)],
                 ["Site", c.website && <a className="link" href={c.website} target="_blank" rel="noopener noreferrer"><Globe className="inline size-3.5" /> {c.website}</a>],
                 ["Endereço", formatAddress({ address: c.address, number: c.addressNumber, complement: c.addressComplement, district: c.district, city: c.city, state: c.state, zipCode: c.zipCode })],
                 ["Observações", c.notes],
@@ -148,7 +159,7 @@ export default async function ClientDetail({ params, searchParams }: { params: P
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     {(k.mobile || k.phone) && <a href={`tel:${k.mobile ?? k.phone}`} className="btn btn-secondary btn-sm"><Phone className="size-3.5" /> Ligar</a>}
                     {k.whatsapp && <a href={whatsappLink(k.whatsapp)!} target="_blank" rel="noopener noreferrer" className="btn btn-secondary btn-sm"><MessageCircle className="size-3.5" /> WhatsApp</a>}
-                    {k.email && <a href={`mailto:${k.email}`} className="btn btn-secondary btn-sm"><Mail className="size-3.5" /> E-mail</a>}
+                    {k.email && can("clients:write") && <Link href={`/emails/novo?contato=${k.id}`} className="btn btn-secondary btn-sm"><Mail className="size-3.5" /> E-mail</Link>}
                   </div>
                 </li>
               ))}
@@ -269,7 +280,12 @@ export default async function ClientDetail({ params, searchParams }: { params: P
         </Card>
       )}
 
-      {tab === "historico" && <ClientHistory events={history} />}
+      {tab === "historico" && (
+        <div className="space-y-3">
+          {can("clients:write") && <div className="flex justify-end"><LinkButton href={`/emails/novo?cliente=${id}`} icon={Mail}>Enviar e-mail</LinkButton></div>}
+          <ClientHistory events={history} />
+        </div>
+      )}
     </>
   );
 }
