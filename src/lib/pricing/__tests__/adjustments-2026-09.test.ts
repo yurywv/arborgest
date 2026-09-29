@@ -100,6 +100,24 @@ describe("Frete", () => {
   it("tarifa não configurada gera aviso", () => expect(sup({ freightMode: "CALC", freightDistanceKm: 10, freightWeightKg: 100 }).warnings.some((w) => w.code === "FRETE_SEM_TARIFA")).toBe(true));
 });
 
+describe("Maquinário na supressão (munck, retroescavadeira)", () => {
+  it("horas × preço por hora, somando os equipamentos, fora dos fatores", () => {
+    const machines = [{ type: "MUNCK", hours: 6, hourlyRate: 350 }, { type: "RETROESCAVADEIRA", hours: 4, hourlyRate: 220 }] as SupressaoInputs["machines"];
+    const off = sup({ modifiers: ["CONCRETO"] }), on = sup({ modifiers: ["CONCRETO"], machines });
+    near(on.costs.maquinario, 6 * 350 + 4 * 220);
+    near(Number(on.operationalCost) - Number(off.operationalCost), 2980); // fatores não multiplicam o maquinário
+    expect(on.components.find((c) => c.key === "maquina1")?.label).toBe("Maquinário — Caminhão munck");
+    expect(proposalExtras(on, {}).join(" ")).toMatch(/Inclui maquinário: Caminhão munck: 6 h; Retroescavadeira: 4 h/);
+  });
+  it("sem maquinário (ou orçamentos antigos) = 0", () => near(sup().costs.maquinario, 0));
+  it("valida horas, preço e descrição de 'outro'", () => {
+    expect(() => sup({ machines: [{ type: "MUNCK", hours: 0, hourlyRate: 300 }] })).toThrow(/horas/);
+    expect(() => sup({ machines: [{ type: "RETROESCAVADEIRA", hours: 2, hourlyRate: -1 }] })).toThrow(/preço/);
+    expect(() => sup({ machines: [{ type: "OUTRO", hours: 2, hourlyRate: 100 }] })).toThrow(/descreva/);
+    near(sup({ machines: [{ type: "OUTRO", description: "Plataforma elevatória", hours: 3, hourlyRate: 180 }] }).costs.maquinario, 540);
+  });
+});
+
 describe("Acompanhamento técnico", () => {
   it("diária + alimentação + hospedagem + transporte pelos dias da operação", () => {
     const r = poda({ trees: 16, difficulty: 1, distanceKm: 100, toll: 20, lodging: true, supervision: true, mealCost: 60, lodgingCost: 180 }); // 2 dias

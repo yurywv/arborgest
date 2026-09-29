@@ -83,6 +83,13 @@ export const INPUT_SCHEMAS = {
     freightValue: optNonNeg("Valor do frete", 10_000_000).optional(),
     freightDistanceKm: optNonNeg("Distância do frete", 20_000).optional(),
     freightWeightKg: optNonNeg("Peso do frete", 10_000_000).optional(),
+    machines: z.array(z.object({
+      type: z.enum(["MUNCK", "RETROESCAVADEIRA", "OUTRO"], { error: "Maquinário: selecione o equipamento." }),
+      description: optText(120).optional(),
+      hours: z.coerce.number({ error: "Maquinário: horas inválidas." }).positive("Maquinário: informe as horas.").max(10_000, "Maquinário: horas acima do limite."),
+      hourlyRate: z.coerce.number({ error: "Maquinário: preço por hora inválido." }).positive("Maquinário: informe o preço por hora.").max(1_000_000, "Maquinário: preço acima do limite."),
+    }).refine((m) => m.type !== "OUTRO" || !!m.description, { message: "Maquinário: descreva o equipamento.", path: ["description"] }))
+      .max(10, "No máximo 10 equipamentos.").optional().default([]),
   }),
   PODA: z.object({
     ...base,
@@ -91,8 +98,8 @@ export const INPUT_SCHEMAS = {
   }),
 } satisfies Record<ServiceCode, z.ZodType>;
 
-export type FieldKind = "int" | "decimal" | "money" | "bool" | "yesno" | "text" | "select" | "difficulty" | "serviceType" | "modifiers" | "compensationRule";
-export type FieldSection = "CUSTOS" | "QUANTIDADE" | "LOGISTICA" | "REGIONAL" | "OPERACAO" | "SERVICO" | "COMPENSACAO" | "FRETE" | "ACOMPANHAMENTO" | "MODIFICADORES";
+export type FieldKind = "machines" | "int" | "decimal" | "money" | "bool" | "yesno" | "text" | "select" | "difficulty" | "serviceType" | "modifiers" | "compensationRule";
+export type FieldSection = "MAQUINARIO" | "CUSTOS" | "QUANTIDADE" | "LOGISTICA" | "REGIONAL" | "OPERACAO" | "SERVICO" | "COMPENSACAO" | "FRETE" | "ACOMPANHAMENTO" | "MODIFICADORES";
 export type FieldDef = {
   key: string; label: string; kind: FieldKind; section: FieldSection; suffix?: string; hint?: string;
   /** Campo opcional: vazio = valor padrão dos parâmetros (ou regra automática). */
@@ -203,6 +210,8 @@ const CORE: Record<"INVENTARIO" | "SUPRESSAO" | "PODA", ServiceDef> = {
       { key: "freightValue", label: "Valor do frete", kind: "money", section: "FRETE", suffix: "R$", optional: true, showIf: { key: "freightMode", equals: "FIXED" } },
       { key: "freightDistanceKm", label: "Distância do frete", kind: "decimal", section: "FRETE", suffix: "km", optional: true, showIf: { key: "freightMode", equals: "CALC" } },
       { key: "freightWeightKg", label: "Peso transportado", kind: "decimal", section: "FRETE", suffix: "kg", optional: true, showIf: { key: "freightMode", equals: "CALC" } },
+      { key: "machines", label: "Maquinário", kind: "machines", section: "MAQUINARIO", optional: true,
+        hint: "Munck, retroescavadeira ou outro equipamento: horas × preço por hora. Custo fora dos fatores de dificuldade." },
       ...SUPERVISION_FIELDS,
       { key: "modifiers", label: "Modificadores", kind: "modifiers", section: "MODIFICADORES" },
     ],

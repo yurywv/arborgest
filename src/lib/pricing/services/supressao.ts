@@ -9,7 +9,8 @@
  *  custo base = técnico + auxiliares + deslocamento + alimentação + hospedagem + combustível (+ compensação no v1)
  *  após modificadores = custo base × Π fatores
  *  operacional = caçamba + rateio fixo + licença + após modificadores (+ compensação no v2)
- *                + acompanhamento técnico + frete (fora dos fatores)
+ *                + acompanhamento técnico + frete + maquinário (fora dos fatores)
+ *  maquinário = Σ horas × preço por hora (munck, retroescavadeira… informados no orçamento)
  *  preço = operacional ÷ (1 − margem) ÷ (1 − imposto)
  */
 import {
@@ -17,6 +18,7 @@ import {
 } from "../engine";
 import { D, dec, fmtBRL, fmtN } from "../decimal";
 import type { CalcResult, Difficulty, PricingParams, SupressaoInputs } from "../types";
+import { MACHINE_LABEL } from "../types";
 
 export function calcSupressao(p: PricingParams, inp: SupressaoInputs): CalcResult {
   const calc = new Calc();
@@ -77,6 +79,16 @@ export function calcSupressao(p: PricingParams, inp: SupressaoInputs): CalcResul
     if (dec(f.tarifaTonKm).isZero()) calc.warn("FRETE_SEM_TARIFA", "Tarifa de frete (R$/t·km) não configurada nos parâmetros; informe o valor do frete ou configure a tarifa.");
   }
 
+  // Maquinário (munck, retroescavadeira…): horas × preço/hora informados. Custo por uso, fora dos fatores.
+  let maquinario = dec(0);
+  const machines = inp.machines ?? [];
+  machines.forEach((m, i) => {
+    const name = m.type === "OUTRO" ? (m.description?.trim() || MACHINE_LABEL.OUTRO) : MACHINE_LABEL[m.type];
+    maquinario = maquinario.plus(calc.add(`maquina${i + 1}`, `Maquinário — ${name}`, dec(m.hours).mul(dec(m.hourlyRate)),
+      `${fmtN(m.hours)} h × ${fmtBRL(m.hourlyRate)}/h`));
+  });
+  calc.add("maquinario", "Maquinário (total)", maquinario, machines.length ? `${machines.length} equipamento(s)` : "Sem maquinário");
+
   const sup = supervisionBlock(p, inp, calc, c);
 
   const labor = c.tecnico.plus(c.auxiliares).plus(c.deslocamento).plus(c.alimentacao).plus(c.hospedagem).plus(combustivel);
@@ -86,11 +98,11 @@ export function calcSupressao(p: PricingParams, inp: SupressaoInputs): CalcResul
        : "Técnico + auxiliares + deslocamento + alimentação + hospedagem + combustível", "TOTAL");
   const afterModifiers = calc.add("aposModificadores", "Valor após modificadores", baseCost.mul(mods.factor),
     `${fmtBRL(baseCost)} × ${fmtN(mods.factor)}`, "TOTAL");
-  let baseOperational = cac.cost.plus(c.rateio).plus(licenca).plus(afterModifiers).plus(sup.total).plus(frete);
+  let baseOperational = cac.cost.plus(c.rateio).plus(licenca).plus(afterModifiers).plus(sup.total).plus(frete).plus(maquinario);
   if (!v1) baseOperational = baseOperational.plus(compensacao);
   calc.add("custoOperacional", "Custo operacional", baseOperational,
     `Caçamba + rateio fixo + licenciamento + valor após modificadores${v1 ? "" : " + compensação"}` +
-      `${sup.total.isZero() ? "" : " + acompanhamento técnico"}${frete.isZero() ? "" : " + frete"}`, "TOTAL");
+      `${sup.total.isZero() ? "" : " + acompanhamento técnico"}${frete.isZero() ? "" : " + frete"}${maquinario.isZero() ? "" : " + maquinário"}`, "TOTAL");
   const operational = urgencyBlock(p, inp.urgency, baseOperational, calc);
 
   const price = priceBlock(p, operational, inp.trees, calc, "STANDARD");
@@ -99,13 +111,14 @@ export function calcSupressao(p: PricingParams, inp: SupressaoInputs): CalcResul
     costs: {
       tecnico: c.tecnico, auxiliares: c.auxiliares, deslocamento: c.deslocamento, alimentacao: c.alimentacao,
       hospedagem: c.hospedagem, combustivel, cacamba: cac.cost, licenca, compensacao, rateioFixo: c.rateio,
-      supervisao: sup.total, frete, urgencia: operational.minus(baseOperational),
+      supervisao: sup.total, frete, maquinario, urgencia: operational.minus(baseOperational),
     },
     baseCost, mods, afterModifiers, operational, price, method: "STANDARD", auxiliaries: inp.auxiliaries,
     details: {
       cacambaQty: cac.qty, supervisionDays: sup.days, seedlings: inp.compensation ? seedlings.toNumber() : 0,
       compensationLaw: inp.compensation ? law : null, compensationCity: inp.compensation ? inp.compensationCity?.trim() || null : null,
       mealCost: c.meal.toString(), lodgingCost: c.lodgingDay.toString(),
+      machines: machines.length ? machines.map((m) => `${m.type === "OUTRO" ? (m.description?.trim() || MACHINE_LABEL.OUTRO) : MACHINE_LABEL[m.type]}: ${fmtN(m.hours)} h`).join("; ") : null,
     },
   });
 }

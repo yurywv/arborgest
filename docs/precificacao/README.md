@@ -187,3 +187,9 @@ e o orçamento criado a partir de uma oportunidade herda os vínculos (só os da
 **Urgência no preço**: campo opcional *Urgência* em todos os serviços; o parâmetro *Acréscimo por urgência* (por nível, em
 Administração › Parâmetros de preço) incide sobre o custo operacional antes da margem e do imposto. Padrão 0% (sem acréscimo).
 Vincular/desvincular registros fica na auditoria da precificação (`BASE_TECNICA`).
+
+## Maquinário na supressão (set/2026)
+Na supressão é possível incluir **maquinário** (caminhão munck, retroescavadeira ou outro equipamento descrito):
+cada linha tem **horas** e **preço por hora**, informados no orçamento (nada vem preenchido). Custo = Σ horas × preço/hora,
+somado ao custo operacional **fora dos fatores de dificuldade** (como frete e acompanhamento técnico), antes da margem e do imposto.
+A proposta informa os equipamentos e as horas, sem valores internos. Orçamentos antigos: maquinário = 0.

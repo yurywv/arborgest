@@ -12,19 +12,30 @@ import { fmtBRL, fmtN, fmtPct } from "@/lib/pricing/decimal";
 import { toPureLegacy, toV2 } from "@/lib/pricing/defaults";
 import { adjustedItemPrice } from "@/lib/pricing/policy";
 import type { CalcResult, Difficulty, PricingParams, ServiceCode, CoreServiceCode } from "@/lib/pricing/types";
-import { DIFFICULTIES, DIFFICULTY_LABEL } from "@/lib/pricing/types";
+import { DIFFICULTIES, DIFFICULTY_LABEL, MACHINE_LABEL } from "@/lib/pricing/types";
 import { TreePicker, type PickerTree } from "./tree-picker";
 
 type Values = Record<string, string | boolean | string[]>;
 
 function toValues(inputs: Record<string, unknown>): Values {
-  return Object.fromEntries(Object.entries(inputs).map(([k, v]) => [k, v === null || v === undefined ? "" : typeof v === "number" ? String(v) : (v as string | boolean | string[])]));
+  return Object.fromEntries(Object.entries(inputs).map(([k, v]) => [k,
+    v === null || v === undefined ? "" : typeof v === "number" ? String(v)
+      : Array.isArray(v) && v.some((x) => typeof x === "object") ? JSON.stringify(v) : (v as string | boolean | string[])]));
 }
+
+type MachineRow = { type: string; description: string; hours: string; hourlyRate: string };
+const parseMachines = (v: unknown): MachineRow[] => {
+  try {
+    const rows = JSON.parse(typeof v === "string" && v ? v : "[]") as Record<string, unknown>[];
+    return rows.map((r) => ({ type: String(r.type ?? ""), description: String(r.description ?? ""), hours: r.hours == null ? "" : String(r.hours), hourlyRate: r.hourlyRate == null ? "" : String(r.hourlyRate) }));
+  } catch { return []; }
+};
+const incompleteMachines = (v: unknown) => parseMachines(v).some((m) => !m.type || !m.hours.trim() || !m.hourlyRate.trim() || (m.type === "OUTRO" && !m.description.trim()));
 /** Formulário vazio: nenhum conteúdo sugerido (caixas desmarcadas, demais campos em branco). */
 function emptyValues(service: ServiceCode): Values {
   return Object.fromEntries(SERVICES[service].fields
     .filter((f) => f.kind !== "compensationRule")
-    .map((f) => [f.key, f.kind === "bool" ? false : f.kind === "modifiers" ? [] : ""]));
+    .map((f) => [f.key, f.kind === "bool" ? false : f.kind === "modifiers" ? [] : f.kind === "machines" ? "[]" : ""]));
 }
 
 const isVisible = (f: FieldDef, v: Values) => !f.showIf || v[f.showIf.key] === f.showIf.equals || String(v[f.showIf.key]) === String(f.showIf.equals);
@@ -34,7 +45,8 @@ function missingFields(service: ServiceCode, v: Values) {
   return SERVICES[service].fields
     .filter((f) => !f.optional && isVisible(f, v) && ["int", "decimal", "money", "difficulty", "serviceType", "yesno"].includes(f.kind))
     .filter((f) => v[f.key] === "" || v[f.key] === undefined || v[f.key] === null)
-    .map((f) => f.label.replace(/\?$/, ""));
+    .map((f) => f.label.replace(/\?$/, ""))
+    .concat(SERVICES[service].fields.some((f) => f.kind === "machines" && incompleteMachines(v[f.key])) ? ["Maquinário (equipamento, horas e preço por hora)"] : []);
 }
 
 /** Converte o formulário em entradas do motor. Campos numéricos opcionais vazios viram null (= padrão dos parâmetros). */
@@ -50,6 +62,8 @@ function toInputs(v: Values, service: ServiceCode): Record<string, unknown> {
     const f = fields.get(k);
     if (typeof x !== "string" || !f) return [k, x];
     if (f.kind === "text") return [k, x.trim() === "" ? null : x];
+    if (f.kind === "machines")
+      return [k, parseMachines(x).map((m) => ({ type: m.type, description: m.description.trim() || null, hours: num(m.hours, false), hourlyRate: num(m.hourlyRate, false) }))];
     if (f.kind === "select") return [k, x === "" ? ("emptyAs" in f ? f.emptyAs : "NONE") : x];
     if (f.kind === "yesno") return [k, undefined];
     return [k, num(x, !!f.optional)];
@@ -138,6 +152,7 @@ export function PricingSimulator(props: SimulatorProps) {
     { key: "OPERACAO", title: "Operação" },
     { key: "SERVICO", title: def?.name ?? "" },
     { key: "CUSTOS", title: "Materiais, terceiros e taxas" },
+    { key: "MAQUINARIO", title: "Maquinário (munck, retroescavadeira…)" },
     { key: "COMPENSACAO", title: "Compensação ambiental" },
     { key: "FRETE", title: "Frete (mudas e materiais)" },
     { key: "ACOMPANHAMENTO", title: "Acompanhamento técnico" },
@@ -410,6 +425,35 @@ function FieldInput({ f, values, set, params, service, rules, applyRule }: {
         </select>
       </div>
     );
+  if (f.kind === "machines") {
+    const rows = parseMachines(v);
+    const save = (next: MachineRow[]) => set(f.key, JSON.stringify(next));
+    const upd = (i: number, patch: Partial<MachineRow>) => save(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+    return (
+      <div className="space-y-2 sm:col-span-2" data-testid="machines">
+        {f.hint && <p className="text-xs text-stone-500">{f.hint}</p>}
+        {rows.map((m, i) => (
+          <div key={i} className="grid items-end gap-2 rounded-xl border border-stone-200 p-2 sm:grid-cols-[1.4fr_1.4fr_0.8fr_1fr_auto]">
+            <label><span className="label">Equipamento</span>
+              <select id={`${id}-${i}-type`} className="input" value={m.type} onChange={(e) => upd(i, { type: e.target.value })}>
+                <option value="">Selecione…</option>
+                {Object.entries(MACHINE_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+              </select></label>
+            <label><span className="label">Descrição{m.type === "OUTRO" ? " *" : ""}</span>
+              <input id={`${id}-${i}-description`} className="input" value={m.description} maxLength={120} autoComplete="off" onChange={(e) => upd(i, { description: e.target.value })} /></label>
+            <label><span className="label">Horas</span>
+              <input id={`${id}-${i}-hours`} className="input" inputMode="decimal" value={m.hours} autoComplete="off" onChange={(e) => upd(i, { hours: e.target.value })} /></label>
+            <label><span className="label">Preço por hora (R$)</span>
+              <input id={`${id}-${i}-rate`} className="input" inputMode="decimal" value={m.hourlyRate} autoComplete="off" onChange={(e) => upd(i, { hourlyRate: e.target.value })} /></label>
+            <button type="button" className="btn btn-ghost btn-sm text-red-700" aria-label={`Remover equipamento ${i + 1}`} onClick={() => save(rows.filter((_, j) => j !== i))}>Remover</button>
+          </div>
+        ))}
+        {rows.length < 10 && (
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => save([...rows, { type: "", description: "", hours: "", hourlyRate: "" }])}>+ Incluir maquinário</button>
+        )}
+      </div>
+    );
+  }
   if (f.kind === "modifiers") {
     const selected = (v as string[]) ?? [];
     const mods = (params.services[service as CoreServiceCode].modifiers ?? []).filter((m) => m.active).sort((a, b) => a.order - b.order);

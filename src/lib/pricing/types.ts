@@ -147,6 +147,15 @@ export interface FieldOperationInputs extends BaseInputs {
   supervisionDays?: number | null; // null = dias estimados da operação
 }
 export type FreightMode = "NONE" | "FIXED" | "CALC";
+export type MachineType = "MUNCK" | "RETROESCAVADEIRA" | "OUTRO";
+export const MACHINE_LABEL: Record<MachineType, string> = { MUNCK: "Caminhão munck", RETROESCAVADEIRA: "Retroescavadeira", OUTRO: "Outro equipamento" };
+/** Maquinário locado/próprio usado na operação: horas × preço por hora (informados no orçamento). */
+export interface MachineUse {
+  type: MachineType;
+  description?: string | null; // obrigatório para "OUTRO"
+  hours: number;
+  hourlyRate: number;
+}
 export interface SupressaoInputs extends FieldOperationInputs {
   // serviceType: 1 = Licenciamento + Supressão, 2 = Apenas supressão
   compensation: boolean;
@@ -158,6 +167,8 @@ export interface SupressaoInputs extends FieldOperationInputs {
   freightValue?: number | null; // FIXED: valor do frete para a cidade
   freightDistanceKm?: number | null; // CALC
   freightWeightKg?: number | null; // CALC (null = mudas × peso por muda)
+  /** Munck, retroescavadeira… (fora dos fatores de dificuldade). */
+  machines?: MachineUse[];
 }
 export interface PodaInputs extends FieldOperationInputs {
   // serviceType: 1 = Limpeza + Raleamento, 2 = Só limpeza, 3 = Só raleamento

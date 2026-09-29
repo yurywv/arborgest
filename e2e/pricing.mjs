@@ -128,10 +128,20 @@ try {
   await com.locator("#sim-compensation").check();
   await com.locator("#sim-compensationRule").selectOption(ruleValue);
   const supPrice2 = await priceOnScreen(com);
+  // Maquinário: munck por hora
+  await com.getByRole("button", { name: "+ Incluir maquinário" }).click();
+  check("maquinário começa em branco e exige equipamento, horas e preço", (await com.locator("#sim-machines-0-type").inputValue()) === "" && (await com.getByText(/Maquinário \(equipamento, horas e preço por hora\)/).isVisible()));
+  await com.locator("#sim-machines-0-type").selectOption("MUNCK");
+  await com.locator("#sim-machines-0-hours").fill("6");
+  await com.locator("#sim-machines-0-rate").fill("350");
+  await com.getByTestId("preco-final").waitFor();
+  const supPrice3 = await priceOnScreen(com);
+  const api3 = await com.request.post(`${base}/api/precificacao/calcular`, { data: { service: "SUPRESSAO", inputs: { trees: 1, distanceKm: 0, difficulty: 1, auxiliaries: 1, lodging: false, toll: 0, serviceType: 2, compensation: false, cacamba: false, fuelLiters: 0, modifiers: [], machines: [{ type: "MUNCK", hours: 6, hourlyRate: 350 }] } } });
+  check("maquinário (munck 6 h × R$ 350) entra no custo e no preço", supPrice3 > supPrice2 && (await api3.json()).result?.costs?.maquinario === "2100", `R$ ${supPrice2} → R$ ${supPrice3}`);
   await com.getByRole("button", { name: "Adicionar à proposta" }).click();
   await com.waitForURL(estUrl); await ready(com);
   const supSaved = (await totalOnScreen(com)) - totalBeforeSup;
-  check("supressão com os novos campos: navegador = valor gravado pelo servidor", Math.abs(supPrice2 - supSaved) < 0.01 && Math.abs(supPrice - supPrice2) < 0.01, `R$ ${supPrice2} × R$ ${supSaved.toFixed(2)}`);
+  check("supressão com os novos campos: navegador = valor gravado pelo servidor", Math.abs(supPrice3 - supSaved) < 0.01 && Math.abs(supPrice - supPrice2) < 0.01, `R$ ${supPrice3} × R$ ${supSaved.toFixed(2)}`);
 
   // 4. Ajuste de margem (com motivo) e desconto
   const before = await totalOnScreen(com);
@@ -220,6 +230,7 @@ try {
   check("PDF da proposta gerado", pdf.headers()["content-type"] === "application/pdf" && body.startsWith("%PDF") && body.includes("TOTAL DA PROPOSTA"));
   check("PDF não expõe custos/margem/comissão", !/custo operacional|margem|rateio|sal[aá]rio|comiss|Representante Sul/i.test(body));
   check("PDF cita a lei municipal da compensação", body.includes("9.999/2021"));
+  check("PDF informa o maquinário (sem valores internos)", body.includes("munck: 6 h"));
   await com.getByRole("button", { name: "Registrar envio" }).click();
   await com.waitForTimeout(1500); await com.goto(estUrl); await ready(com);
   check("proposta enviada ao cliente", await com.getByText("Enviado ao cliente").first().isVisible());

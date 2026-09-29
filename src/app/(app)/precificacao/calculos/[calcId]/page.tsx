@@ -6,6 +6,7 @@ import { requirePermission } from "@/lib/auth/session";
 import { hasPermission } from "@/lib/auth/permissions";
 import { fmtDateTime } from "@/lib/format";
 import { calculate, SERVICES } from "@/lib/pricing/registry";
+import { MACHINE_LABEL, type MachineUse } from "@/lib/pricing/types";
 import { snapshotHash } from "@/lib/pricing/server";
 import { ENGINE_LABEL, type CalcResult, type PricingParams, type ServiceCode } from "@/lib/pricing/types";
 import { fmtBRL } from "@/lib/pricing/decimal";
@@ -59,7 +60,11 @@ export default async function CalculationPage({ params }: { params: Promise<{ ca
           <Card title="Entradas">
             <DataList cols={3} items={Object.entries(s.inputs).map(([k, v]) => [
               SERVICES[s.service]?.fields.find((f) => f.key === k)?.label ?? k,
-              Array.isArray(v) ? (v.length ? v.join(", ") : "—") : typeof v === "boolean" ? (v ? "Sim" : "Não") : String(v),
+              Array.isArray(v)
+                ? (v.length ? v.map((x) => (typeof x === "object" && x
+                    ? `${MACHINE_LABEL[(x as MachineUse).type] ?? ""}${(x as MachineUse).description ? ` (${(x as MachineUse).description})` : ""}: ${(x as MachineUse).hours} h × ${fmtBRL((x as MachineUse).hourlyRate)}/h`
+                    : String(x))).join("; ") : "—")
+                : typeof v === "boolean" ? (v ? "Sim" : "Não") : v === null || v === undefined ? "—" : String(v),
             ])} />
             {trees.length > 0 && <p className="mt-3 text-sm">Árvores: {trees.map((t) => <Link key={t.id} className="link mr-1.5" href={`/arvores/${t.code}`}>{t.code}</Link>)}</p>}
           </Card>
